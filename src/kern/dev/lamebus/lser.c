@@ -42,7 +42,6 @@
 /* Bits in the IRQ registers */
 #define LSER_IRQ_ENABLE  1
 #define LSER_IRQ_ACTIVE  2
-#define LSER_IRQ_FORCE   4
 
 void
 lser_irq(void *vsc)
@@ -70,7 +69,7 @@ lser_irq(void *vsc)
 		ch = bus_read_register(sc->ls_busdata, sc->ls_buspos,
 				       LSER_REG_CHAR);
 		got_a_read = true;
-		bus_write_register(sc->ls_busdata, sc->ls_buspos,
+		bus_write_register(sc->ls_busdata, sc->ls_buspos, 
 				   LSER_REG_RIRQ, x);
 	}
 
@@ -131,23 +130,16 @@ void
 lser_writepolled(void *vsc, int ch)
 {
 	struct lser_softc *sc = vsc;
-	bool irqpending;
+	bool irqpending = false;
 
 	spinlock_acquire(&sc->ls_lock);
 
 	if (sc->ls_wbusy) {
 		irqpending = true;
 		lser_poll_until_write(sc);
-		/* Clear the ready condition, but leave the IRQ asserted */
+		/* Clear the ready condition */
 		bus_write_register(sc->ls_busdata, sc->ls_buspos,
-				   LSER_REG_WIRQ,
-				   LSER_IRQ_FORCE|LSER_IRQ_ENABLE);
-	}
-	else {
-		irqpending = false;
-		/* Clear the interrupt enable bit */
-		bus_write_register(sc->ls_busdata, sc->ls_buspos,
-				   LSER_REG_WIRQ, 0);
+				   LSER_REG_WIRQ, LSER_IRQ_ENABLE);
 	}
 
 	/* Send the character. */
@@ -157,11 +149,9 @@ lser_writepolled(void *vsc, int ch)
 	lser_poll_until_write(sc);
 
 	/*
-	 * If there wasn't already an IRQ pending, clear the ready
-	 * condition and turn interruption back on. But if there was,
-	 * leave the register alone, with the ready condition set (and
-	 * the force bit still on); in due course we'll get to the
-	 * interrupt handler and they'll be cleared.
+	 * If there wasn't already an IRQ pending, clear the ready condition.
+	 * But if there was, leave the ready condition, so we get to the 
+	 * interrupt handler in due course.
 	 */
 	if (!irqpending) {
 		bus_write_register(sc->ls_busdata, sc->ls_buspos,
@@ -169,6 +159,25 @@ lser_writepolled(void *vsc, int ch)
 	}
 
 	spinlock_release(&sc->ls_lock);
+}
+
+/*
+ * Mask the interrupt while we're writing in polling mode. Doing so
+ * causes the interrupt line to flap on every character, which makes
+ * the CPU receiving those interrupts upset.
+ */
+void
+lser_startpolling(void *vsc)
+{
+	struct lser_softc *sc = vsc;
+	sc->ls_maskinterrupt(sc->ls_busdata, sc->ls_buspos);
+}
+
+void
+lser_endpolling(void *vsc)
+{
+	struct lser_softc *sc = vsc;
+	sc->ls_unmaskinterrupt(sc->ls_busdata, sc->ls_buspos);
 }
 
 int

@@ -51,6 +51,8 @@ attach_con_to_lser(int consno, struct lser_softc *ls)
 	cs->cs_devdata = ls;
 	cs->cs_send = lser_write;
 	cs->cs_sendpolled = lser_writepolled;
+	cs->cs_startpolling = lser_startpolling;
+	cs->cs_endpolling = lser_endpolling;
 
 	ls->ls_devdata = cs;
 	ls->ls_start = con_start;
@@ -58,4 +60,3 @@ attach_con_to_lser(int consno, struct lser_softc *ls)
 
 	return cs;
 }
-

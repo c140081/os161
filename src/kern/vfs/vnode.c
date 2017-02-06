@@ -39,17 +39,18 @@
 
 /*
  * Initialize an abstract vnode.
+ * Invoked by VOP_INIT.
  */
 int
 vnode_init(struct vnode *vn, const struct vnode_ops *ops,
 	   struct fs *fs, void *fsdata)
 {
-	KASSERT(vn != NULL);
-	KASSERT(ops != NULL);
+	KASSERT(vn!=NULL);
+	KASSERT(ops!=NULL);
 
 	vn->vn_ops = ops;
 	vn->vn_refcount = 1;
-	spinlock_init(&vn->vn_countlock);
+	vn->vn_opencount = 0;
 	vn->vn_fs = fs;
 	vn->vn_data = fsdata;
 	return 0;
@@ -57,16 +58,17 @@ vnode_init(struct vnode *vn, const struct vnode_ops *ops,
 
 /*
  * Destroy an abstract vnode.
+ * Invoked by VOP_CLEANUP.
  */
 void
 vnode_cleanup(struct vnode *vn)
 {
-	KASSERT(vn->vn_refcount == 1);
-
-	spinlock_cleanup(&vn->vn_countlock);
+	KASSERT(vn->vn_refcount==1);
+	KASSERT(vn->vn_opencount==0);
 
 	vn->vn_ops = NULL;
 	vn->vn_refcount = 0;
+	vn->vn_opencount = 0;
 	vn->vn_fs = NULL;
 	vn->vn_data = NULL;
 }
@@ -81,9 +83,11 @@ vnode_incref(struct vnode *vn)
 {
 	KASSERT(vn != NULL);
 
-	spinlock_acquire(&vn->vn_countlock);
+	vfs_biglock_acquire();
+
 	vn->vn_refcount++;
-	spinlock_release(&vn->vn_countlock);
+
+	vfs_biglock_release();
 }
 
 /*
@@ -94,25 +98,17 @@ vnode_incref(struct vnode *vn)
 void
 vnode_decref(struct vnode *vn)
 {
-	bool destroy;
 	int result;
 
 	KASSERT(vn != NULL);
 
-	spinlock_acquire(&vn->vn_countlock);
+	vfs_biglock_acquire();
 
-	KASSERT(vn->vn_refcount > 0);
-	if (vn->vn_refcount > 1) {
+	KASSERT(vn->vn_refcount>0);
+	if (vn->vn_refcount>1) {
 		vn->vn_refcount--;
-		destroy = false;
 	}
 	else {
-		/* Don't decrement; pass the reference to VOP_RECLAIM. */
-		destroy = true;
-	}
-	spinlock_release(&vn->vn_countlock);
-
-	if (destroy) {
 		result = VOP_RECLAIM(vn);
 		if (result != 0 && result != EBUSY) {
 			// XXX: lame.
@@ -120,6 +116,54 @@ vnode_decref(struct vnode *vn)
 				strerror(result));
 		}
 	}
+
+	vfs_biglock_release();
+}
+
+/*
+ * Increment the open count.
+ * Called by VOP_INCOPEN.
+ */
+void
+vnode_incopen(struct vnode *vn)
+{
+	KASSERT(vn != NULL);
+
+	vfs_biglock_acquire();
+	vn->vn_opencount++;
+	vfs_biglock_release();
+}
+
+/*
+ * Decrement the open count.
+ * Called by VOP_DECOPEN.
+ */
+void
+vnode_decopen(struct vnode *vn)
+{
+	int result;
+
+	KASSERT(vn != NULL);
+
+	vfs_biglock_acquire();
+
+	KASSERT(vn->vn_opencount>0);
+	vn->vn_opencount--;
+
+	if (vn->vn_opencount > 0) {
+		vfs_biglock_release();
+		return;
+	}
+
+	result = VOP_CLOSE(vn);
+	if (result) {
+		// XXX: also lame.
+		// The FS should do what it can to make sure this code
+		// doesn't get reached...
+		kprintf("vfs: Warning: VOP_CLOSE: %s\n", strerror(result));
+	}
+
+	vfs_biglock_release();
 }
 
 /*
@@ -146,7 +190,7 @@ vnode_check(struct vnode *v, const char *opstr)
 	}
 
 	if (v->vn_ops->vop_magic != VOP_MAGIC) {
-		panic("vnode_check: vop_%s: ops with bad magic number %lx\n",
+		panic("vnode_check: vop_%s: ops with bad magic number %lx\n", 
 		      opstr, v->vn_ops->vop_magic);
 	}
 
@@ -158,20 +202,26 @@ vnode_check(struct vnode *v, const char *opstr)
 		panic("vnode_check: vop_%s: deadbeef fs pointer\n", opstr);
 	}
 
-	spinlock_acquire(&v->vn_countlock);
-
 	if (v->vn_refcount < 0) {
 		panic("vnode_check: vop_%s: negative refcount %d\n", opstr,
 		      v->vn_refcount);
 	}
-	else if (v->vn_refcount == 0) {
+	else if (v->vn_refcount == 0 && strcmp(opstr, "reclaim")) {
 		panic("vnode_check: vop_%s: zero refcount\n", opstr);
 	}
 	else if (v->vn_refcount > 0x100000) {
-		kprintf("vnode_check: vop_%s: warning: large refcount %d\n",
+		kprintf("vnode_check: vop_%s: warning: large refcount %d\n", 
 			opstr, v->vn_refcount);
 	}
 
-	spinlock_release(&v->vn_countlock);
+	if (v->vn_opencount < 0) {
+		panic("vnode_check: vop_%s: negative opencount %d\n", opstr,
+		      v->vn_opencount);
+	}
+	else if (v->vn_opencount > 0x100000) {
+		kprintf("vnode_check: vop_%s: warning: large opencount %d\n", 
+			opstr, v->vn_opencount);
+	}
+
 	vfs_biglock_release();
 }

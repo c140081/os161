@@ -30,7 +30,7 @@
 #include <types.h>
 #include <lib.h>
 #include <uio.h>
-#include <proc.h>
+#include <thread.h>
 #include <current.h>
 #include <copyinout.h>
 
@@ -52,7 +52,7 @@ uiomove(void *ptr, size_t n, struct uio *uio)
 		KASSERT(uio->uio_space == NULL);
 	}
 	else {
-		KASSERT(uio->uio_space == proc_getas());
+		KASSERT(uio->uio_space == curthread->t_addrspace);
 	}
 
 	while (n > 0 && uio->uio_resid > 0) {
@@ -69,7 +69,7 @@ uiomove(void *ptr, size_t n, struct uio *uio)
 			uio->uio_iov++;
 			uio->uio_iovcnt--;
 			if (uio->uio_iovcnt == 0) {
-				/*
+				/* 
 				 * This should only happen if you set
 				 * uio_resid incorrectly (to more than
 				 * the total length of buffers the uio
@@ -82,6 +82,7 @@ uiomove(void *ptr, size_t n, struct uio *uio)
 
 		switch (uio->uio_segflg) {
 		    case UIO_SYSSPACE:
+			    result = 0;
 			    if (uio->uio_rw == UIO_READ) {
 				    memmove(iov->iov_kbase, ptr, size);
 			    }

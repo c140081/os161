@@ -34,8 +34,6 @@ struct ltrace_softc {
 	/* Initialized by lower-level attachment function */
 	void *lt_busdata;
 	uint32_t lt_buspos;
-	bool lt_canstop;
-	bool lt_canprof;
 };
 
 /*
@@ -44,9 +42,6 @@ struct ltrace_softc {
  *   ltrace_off:   turns off the trace161 tracing flag CODE.
  *   ltrace_debug: causes sys161/trace161 to print a message with CODE.
  *   ltrace_dump:  causes trace161 to do a complete state dump, tagged CODE.
- *   ltrace_stop:  causes sys161/trace161 to drop to the debugger.
- *   ltrace_setprof: turn on and off trace161 profile collection.
- *   ltrace_eraseprof: discard trace161 profile collected so far.
  *
  * The flags for ltrace_on/off are the characters used to control
  * tracing on the trace161 command line. See the System/161 manual for
@@ -63,28 +58,10 @@ struct ltrace_softc {
  * ltrace_dump dumps the entire system state and is primarily intended
  * for regression testing of System/161. It might or might not prove
  * useful for debugging as well.
- *
- * Calling ltrace_stop behaves similarly to hardwiring a breakpoint
- * instruction in your code, except that debuggers have trouble
- * stepping past hardwired breakpoints. Currently the value of the
- * code is ignored.
- *
- * ltrace_setprof can be used to dynamically turn profiling on and
- * off, if trace161 is collecting a profile. (Otherwise it does
- * nothing.) This can be used to e.g. profile only code that executes
- * while holding a given lock.
- *
- * ltrace_eraseprof can be used to clear the accumulated profile
- * data, if trace161 is collecting a profile. (Otherwise it does
- * nothing.) This can be used to e.g. exclude bootup actions from your
- * profile.
  */
 void ltrace_on(uint32_t code);
 void ltrace_off(uint32_t code);
 void ltrace_debug(uint32_t code);
 void ltrace_dump(uint32_t code);
-void ltrace_stop(uint32_t code);
-void ltrace_setprof(uint32_t onoff);
-void ltrace_eraseprof(void);
 
 #endif /* _LAMEBUS_LTRACE_H_ */

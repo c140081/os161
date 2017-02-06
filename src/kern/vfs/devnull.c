@@ -49,6 +49,15 @@ nullopen(struct device *dev, int openflags)
 	return 0;
 }
 
+/* For close() */
+static
+int
+nullclose(struct device *dev)
+{
+	(void)dev;
+	return 0;
+}
+
 /* For d_io() */
 static
 int
@@ -56,10 +65,6 @@ nullio(struct device *dev, struct uio *uio)
 {
 	/*
 	 * On write, discard everything without looking at it.
-	 * (Notice that you can write to the null device from invalid
-	 * buffer pointers and it will still succeed. This behavior is
-	 * traditional.)
-	 *
 	 * On read, do nothing, generating an immediate EOF.
 	 */
 
@@ -88,12 +93,6 @@ nullioctl(struct device *dev, int op, userptr_t data)
 	return EINVAL;
 }
 
-static const struct device_ops null_devops = {
-	.devop_eachopen = nullopen,
-	.devop_io = nullio,
-	.devop_ioctl = nullioctl,
-};
-
 /*
  * Function to create and attach null:
  */
@@ -108,7 +107,11 @@ devnull_create(void)
 		panic("Could not add null device: out of memory\n");
 	}
 
-	dev->d_ops = &null_devops;
+	
+	dev->d_open = nullopen;
+	dev->d_close = nullclose;
+	dev->d_io = nullio;
+	dev->d_ioctl = nullioctl;
 
 	dev->d_blocks = 0;
 	dev->d_blocksize = 1;

@@ -31,14 +31,22 @@
 #include <kern/errno.h>
 #include <lib.h>
 #include <addrspace.h>
-#include <vm.h>
-#include <proc.h>
+#include <spl.h>
+#include <spinlock.h>
+#include <thread.h>
+#include <current.h>
+#include <mips/tlb.h>
+#include <addrspace.h>
+#include <../include/vm.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
  * assignment, this file is not compiled or linked or in any way
  * used. The cheesy hack versions in dumbvm.c are used instead.
  */
+
+/* under dumbvm, always have 48k of user stack */
+#define DUMBVM_STACKPAGES    12
 
 struct addrspace *
 as_create(void)
@@ -53,6 +61,12 @@ as_create(void)
 	/*
 	 * Initialize as needed.
 	 */
+	as->pages = NULL;
+	as->regions = NULL;
+	as->stack = NULL;
+	as->heap = NULL;
+	as->heap_end = (vaddr_t)0;
+	as->heap_start = (vaddr_t)0;
 
 	return as;
 }
@@ -60,20 +74,71 @@ as_create(void)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-	struct addrspace *newas;
+	struct addrspace *new;
 
-	newas = as_create();
-	if (newas==NULL) {
+	new = as_create();
+	if (new==NULL) {
 		return ENOMEM;
 	}
 
 	/*
 	 * Write this.
 	 */
+//	new->heap_start=old->heap_start;
+//	new->heap_end=old->heap_end;
+//
+//	KASSERT(new->heap_start != 0);
+//	KASSERT(new->heap_end != 0);
 
-	(void)old;
 
-	*ret = newas;
+	// Setup All the regions
+	struct regionlist * itr,*newitr,*tmp;
+
+	itr=old->regions;
+
+	while(itr!=NULL){
+		if(new->regions == NULL){
+			new->regions=(struct regionlist *) kmalloc(sizeof(struct regionlist));
+			new->regions->next = NULL;
+			newitr=new->regions;
+		}
+		else{
+			for(tmp=new->regions;tmp->next!=NULL;tmp=tmp->next);
+			newitr = (struct regionlist *) kmalloc(sizeof(struct regionlist));
+			tmp->next=newitr;
+		}
+
+		newitr->vbase=itr->vbase;
+		newitr->pbase=itr->pbase;
+		newitr->npages=itr->npages;
+		newitr->permissions=itr->permissions;
+		newitr->next=NULL;
+
+		itr = itr->next;
+		//newitr->last=itr->last;
+
+	}
+
+	// Now actually allocate new pages for these regions
+	if (as_prepare_load(new)) {
+		as_destroy(new);
+		return ENOMEM;
+	}
+
+	// Copy the data from old to new
+	struct page_table_entry *iterate1 = old->pages;
+	struct page_table_entry *iterate2 = new->pages;
+
+	while(iterate1!=NULL){
+
+		memmove((void *)PADDR_TO_KVADDR(iterate2->paddr),
+				(const void *)PADDR_TO_KVADDR(iterate1->paddr),PAGE_SIZE);
+
+		iterate1 = iterate1->next;
+		iterate2 = iterate2->next;
+	}
+
+	*ret = new;
 	return 0;
 }
 
@@ -83,37 +148,60 @@ as_destroy(struct addrspace *as)
 	/*
 	 * Clean up as needed.
 	 */
+//	kprintf("Currently free pages in coremap (as_destroy before)- %d\n",corefree());
+	if(as!=NULL){
 
+		struct regionlist * reglst=as->regions;
+		struct regionlist * temp;
+		while(reglst){
+			temp=reglst;
+			reglst=reglst->next;
+			kfree(temp);
+		}
+
+		struct page_table_entry * pte=as->pages;
+		struct page_table_entry * pagetemp;
+		while(pte != NULL){
+
+			pagetemp=pte;
+			pte=pte->next;
+
+			free_upages(pagetemp->paddr);
+
+			kfree(pagetemp);
+
+		}
+	}
+//	kprintf("Currently free pages in coremap (as_destroy after)- %d\n",corefree());
 	kfree(as);
 }
 
+//static
+//void
+//as_zero_region(paddr_t paddr, unsigned npages)
+//{
+//	bzero((void *)PADDR_TO_KVADDR(paddr), npages * PAGE_SIZE);
+//}
+
 void
-as_activate(void)
+as_activate(struct addrspace *as)
 {
-	struct addrspace *as;
-
-	as = proc_getas();
-	if (as == NULL) {
-		/*
-		 * Kernel thread without an address space; leave the
-		 * prior address space in place.
-		 */
-		return;
-	}
-
 	/*
 	 * Write this.
 	 */
-}
+	int i, spl;
 
-void
-as_deactivate(void)
-{
-	/*
-	 * Write this. For many designs it won't need to actually do
-	 * anything. See proc.c for an explanation of why it (might)
-	 * be needed.
-	 */
+	(void)as;
+
+	/* Disable interrupts on this CPU while frobbing the TLB. */
+	spl = splhigh();
+
+	for (i=0; i<NUM_TLB; i++) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+
+	splx(spl);
+	//(void)as;  // suppress warning until code gets written
 }
 
 /*
@@ -127,20 +215,53 @@ as_deactivate(void)
  * want to implement them.
  */
 int
-as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
-		 int readable, int writeable, int executable)
+as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
+		int readable, int writeable, int executable)
 {
 	/*
 	 * Write this.
 	 */
+	size_t npages;
 
-	(void)as;
-	(void)vaddr;
-	(void)memsize;
-	(void)readable;
-	(void)writeable;
-	(void)executable;
-	return ENOSYS;
+	/* Align the region. First, the base... */
+	sz += vaddr & ~(vaddr_t)PAGE_FRAME;
+	vaddr &= PAGE_FRAME;
+
+	/* ...and now the length. */
+
+	sz = (sz + PAGE_SIZE - 1) & PAGE_FRAME;
+
+	npages = sz / PAGE_SIZE;
+
+	//	kprintf("Region VADDR %d\n",vaddr);
+	//	kprintf("Region Pages %d\n",npages);
+
+	// new code
+	struct regionlist * end;
+	if(as->regions != NULL){
+		end = as->regions->last;
+	}
+
+	if (as->regions == NULL) {
+		as->regions =(struct regionlist *) kmalloc(sizeof(struct regionlist));
+		as->regions->next = NULL;
+		as->regions->last= as->regions;
+		end=as->regions;
+	}
+	else {
+		end=as->regions->last;
+		end->next = (struct regionlist *) kmalloc(sizeof(struct regionlist));
+		end=end->next;
+		end->next = NULL;
+		as->regions->last=end;
+	}
+
+	end->vbase = vaddr;
+	end->npages = npages;
+	end->pbase = 0;
+	end->permissions = 7 & (readable | writeable | executable); // CHECK THIS LATER!!
+
+	return 0;
 }
 
 int
@@ -150,7 +271,100 @@ as_prepare_load(struct addrspace *as)
 	 * Write this.
 	 */
 
-	(void)as;
+	paddr_t paddr;
+	vaddr_t vaddr;
+
+	//as->stackpbase = paddr;
+	//as_zero_region(as->stackpbase, DUMBVM_STACKPAGES);
+
+	// Setting up page table
+	struct regionlist * regionlst;
+	struct page_table_entry * pages;
+	regionlst=as->regions;
+	size_t i;
+	while(regionlst != NULL){
+		vaddr=regionlst->vbase;
+		for(i=0;i<regionlst->npages;i++){
+			if(as->pages==NULL){
+
+				as->pages = (struct page_table_entry *)kmalloc(sizeof(struct page_table_entry));
+				as->pages->vaddr = vaddr;
+				as->pages->permissions = regionlst->permissions;
+				as->pages->next = NULL;
+				paddr = alloc_upages(1);
+				if(paddr == 0){
+					return ENOMEM;
+				}
+
+				as->pages->paddr = paddr;
+
+
+			}else{
+				for(pages=as->pages;pages->next!=NULL;pages=pages->next);
+				pages->next = (struct page_table_entry *)kmalloc(sizeof(struct page_table_entry));
+				pages->next->vaddr = vaddr;
+				pages->next->permissions = regionlst->permissions; // CHECK THIS LATER!!
+				pages->next->next = NULL;
+				paddr = alloc_upages(1);
+				if(paddr == 0){
+					return ENOMEM;
+				}
+				pages->next->paddr = paddr;
+
+
+			}
+
+			vaddr += PAGE_SIZE;
+		}
+
+
+		regionlst=regionlst->next;
+
+	}
+
+	// New Code
+	vaddr_t stackvaddr = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
+	for(pages=as->pages;pages->next!=NULL;pages=pages->next);
+	for(int i=0; i<DUMBVM_STACKPAGES; i++){
+		struct page_table_entry *stack = (struct page_table_entry *)kmalloc(sizeof(struct page_table_entry));
+		pages->next = stack;
+		if(i==0){
+			as->stack = stack;
+		}
+		stack->vaddr = stackvaddr;
+		stack->next = NULL;
+		paddr = alloc_upages(1);
+		if(paddr == 0){
+			return ENOMEM;
+		}
+		stack->paddr = paddr;
+
+
+
+		stackvaddr = stackvaddr + PAGE_SIZE;
+		pages = pages->next;
+	}
+
+	//
+
+	struct page_table_entry *heap_page = (struct page_table_entry *)kmalloc(sizeof(struct page_table_entry));
+	pages->next = heap_page;
+	heap_page->next = NULL;
+
+	paddr = alloc_upages(1);
+	if(paddr == 0){
+		return ENOMEM;
+	}
+
+	heap_page->paddr = paddr;
+	heap_page->vaddr = vaddr;
+
+	as->heap_start = as->heap_end = vaddr;
+	as->heap = heap_page;
+
+	KASSERT(as->heap_start != 0);
+	KASSERT(as->heap_end != 0);
+
 	return 0;
 }
 

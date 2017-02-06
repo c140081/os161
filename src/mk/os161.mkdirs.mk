@@ -47,9 +47,9 @@ _MKDIRS_:=$(_MKDIRS_) $(_HEAD_)$(_INCR_DIR_:S/\/$//)
 .if !target($(_DIR_))
 $(_DIR_):
 .for _PRE_ in $(_DIR_:M*/*:H:N..)
-	@$(MAKE) $(_PRE_) >/dev/null 2>&1 || true
+	@$(MAKE) $(_PRE_) >/dev/null 2>&1
 .endfor
-	mkdir $(_DIR_) || true
+	mkdir $(_DIR_)
 .endif
 .endfor
 

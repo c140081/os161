@@ -45,13 +45,15 @@
  * debugging problems that occur early in initialization is awkward,
  * and (2) if the system crashes before we find a console, no output
  * at all may appear.
+ *
+ * Note that we have no input buffering; characters typed too rapidly
+ * will be lost.
  */
 
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
 #include <uio.h>
-#include <cpu.h>
 #include <thread.h>
 #include <current.h>
 #include <synch.h>
@@ -76,7 +78,7 @@ static struct lock *con_userlock_write = NULL;
 
 /*
  * This is for accumulating characters printed before the
- * console is set up. Upon console setup they are dumped
+ * console is set up. Upon console setup they are dumped 
  * to the actual console; thenceforth this space is unused.
  */
 #define DELAYBUFSIZE  1024
@@ -118,6 +120,24 @@ void
 putch_polled(struct con_softc *cs, int ch)
 {
 	cs->cs_sendpolled(cs->cs_devdata, ch);
+}
+
+static
+void
+putch_prepare_polled(struct con_softc *cs)
+{
+	if (cs->cs_startpolling != NULL) {
+		cs->cs_startpolling(cs->cs_devdata);
+	}
+}
+
+static
+void
+putch_complete_polled(struct con_softc *cs)
+{
+	if (cs->cs_endpolling != NULL) {
+		cs->cs_endpolling(cs->cs_devdata);
+	}
 }
 
 //////////////////////////////////////////////////
@@ -172,7 +192,7 @@ con_input(void *vcs, int ch)
 
 	cs->cs_gotchars[cs->cs_gotchars_head] = ch;
 	cs->cs_gotchars_head = nexthead;
-
+		
 	V(cs->cs_rsem);
 }
 
@@ -191,7 +211,7 @@ con_start(void *vcs)
 
 /*
  * Exported interface.
- *
+ * 
  * Warning: putch must work even in an interrupt handler or with
  * interrupts disabled, and before the console is probed. getch need
  * not, and does not.
@@ -205,13 +225,43 @@ putch(int ch)
 	if (cs==NULL) {
 		putch_delayed(ch);
 	}
-	else if (curthread->t_in_interrupt ||
-		 curthread->t_curspl > 0 ||
-		 curcpu->c_spinlocks > 0) {
+	else if (curthread->t_in_interrupt || curthread->t_iplhigh_count > 0) {
 		putch_polled(cs, ch);
 	}
 	else {
 		putch_intr(cs, ch);
+	}
+}
+
+void
+putch_prepare(void)
+{
+	struct con_softc *cs = the_console;
+
+	if (cs == NULL) {
+		/* nothing */
+	}
+	else if (curthread->t_in_interrupt || curthread->t_iplhigh_count > 0) {
+		putch_prepare_polled(cs);
+	}
+	else {
+		/* nothing */
+	}
+}
+
+void
+putch_complete(void)
+{
+	struct con_softc *cs = the_console;
+
+	if (cs == NULL) {
+		/* nothing */
+	}
+	else if (curthread->t_in_interrupt || curthread->t_iplhigh_count > 0) {
+		putch_complete_polled(cs);
+	}
+	else {
+		/* nothing */
 	}
 }
 
@@ -233,10 +283,18 @@ getch(void)
 
 static
 int
-con_eachopen(struct device *dev, int openflags)
+con_open(struct device *dev, int openflags)
 {
 	(void)dev;
 	(void)openflags;
+	return 0;
+}
+
+static
+int
+con_close(struct device *dev)
+{
+	(void)dev;
 	return 0;
 }
 
@@ -302,12 +360,6 @@ con_ioctl(struct device *dev, int op, userptr_t data)
 	return EINVAL;
 }
 
-static const struct device_ops console_devops = {
-	.devop_eachopen = con_eachopen,
-	.devop_io = con_io,
-	.devop_ioctl = con_ioctl,
-};
-
 static
 int
 attach_console_to_vfs(struct con_softc *cs)
@@ -320,7 +372,10 @@ attach_console_to_vfs(struct con_softc *cs)
 		return ENOMEM;
 	}
 
-	dev->d_ops = &console_devops;
+	dev->d_open = con_open;
+	dev->d_close = con_close;
+	dev->d_io = con_io;
+	dev->d_ioctl = con_ioctl;
 	dev->d_blocks = 0;
 	dev->d_blocksize = 1;
 	dev->d_data = cs;
@@ -382,8 +437,8 @@ config_con(struct con_softc *cs, int unit)
 		return ENOMEM;
 	}
 
-	cs->cs_rsem = rsem;
-	cs->cs_wsem = wsem;
+	cs->cs_rsem = rsem; 
+	cs->cs_wsem = wsem; 
 	cs->cs_gotchars_head = 0;
 	cs->cs_gotchars_tail = 0;
 

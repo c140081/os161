@@ -170,7 +170,7 @@ getdevice(char *path, char **subpath, struct vnode **startvn)
 			colon++;
 		}
 		*subpath = &path[colon+1];
-
+		
 		result = vfs_getroot(path, startvn);
 		if (result) {
 			return result;
@@ -208,13 +208,9 @@ getdevice(char *path, char **subpath, struct vnode **startvn)
 		 */
 		KASSERT(vn->vn_fs!=NULL);
 
-		result = FSOP_GETROOT(vn->vn_fs, startvn);
+		*startvn = FSOP_GETROOT(vn->vn_fs);
 
 		VOP_DECREF(vn);
-
-		if (result) {
-			return result;
-		}
 	}
 
 	while (path[1]=='/') {

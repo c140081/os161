@@ -37,9 +37,15 @@
 #include <synch.h>
 #include <test.h>
 
+#include "opt-synchprobs.h"
+
 /* dimension of matrices (cannot be too large or will overflow stack) */
 
+#if OPT_SYNCHPROBS
+#define DIM 10
+#else
 #define DIM 70
+#endif
 
 /* number of iterations for sleepalot threads */
 #define SLEEPALOT_PRINTS      20	/* number of printouts */
@@ -49,10 +55,8 @@
 /* number of iterations per compute thread */
 #define COMPUTE_ITERS         10
 
-/* N distinct wait channels */
 #define NWAITCHANS 12
-static struct spinlock spinlocks[NWAITCHANS];
-static struct wchan *waitchans[NWAITCHANS];
+static struct wchan *waitchans[NWAITCHANS];  /* N distinct wait channels */
 
 static volatile int wakerdone;
 static struct semaphore *wakersem;
@@ -69,7 +73,6 @@ setup(void)
 		wakersem = sem_create("wakersem", 1);
 		donesem = sem_create("donesem", 0);
 		for (i=0; i<NWAITCHANS; i++) {
-			spinlock_init(&spinlocks[i]);
 			snprintf(tmp, sizeof(tmp), "wc%d", i);
 			waitchans[i] = wchan_create(kstrdup(tmp));
 		}
@@ -87,16 +90,11 @@ sleepalot_thread(void *junk, unsigned long num)
 
 	for (i=0; i<SLEEPALOT_PRINTS; i++) {
 		for (j=0; j<SLEEPALOT_ITERS; j++) {
-			unsigned n;
-			struct spinlock *lk;
-			struct wchan *wc;
+			struct wchan *w;
 
-			n = random() % NWAITCHANS;
-			lk = &spinlocks[n];
-			wc = waitchans[n];
-			spinlock_acquire(lk);
-			wchan_sleep(wc, lk);
-			spinlock_release(lk);
+			w = waitchans[random()%NWAITCHANS];
+			wchan_lock(w);
+			wchan_sleep(w);
 		}
 		kprintf("[%lu]", num);
 	}
@@ -121,16 +119,10 @@ waker_thread(void *junk1, unsigned long junk2)
 		}
 
 		for (i=0; i<WAKER_WAKES; i++) {
-			unsigned n;
-			struct spinlock *lk;
-			struct wchan *wc;
+			struct wchan *w;
 
-			n = random() % NWAITCHANS;
-			lk = &spinlocks[n];
-			wc = waitchans[n];
-			spinlock_acquire(lk);
-			wchan_wakeall(wc, lk);
-			spinlock_release(lk);
+			w = waitchans[random()%NWAITCHANS];
+			wchan_wakeall(w);
 
 			thread_yield();
 		}
@@ -147,12 +139,12 @@ make_sleepalots(int howmany)
 
 	for (i=0; i<howmany; i++) {
 		snprintf(name, sizeof(name), "sleepalot%d", i);
-		result = thread_fork(name, NULL, sleepalot_thread, NULL, i);
+		result = thread_fork(name, sleepalot_thread, NULL, i, NULL);
 		if (result) {
 			panic("thread_fork failed: %s\n", strerror(result));
 		}
 	}
-	result = thread_fork("waker", NULL, waker_thread, NULL, 0);
+	result = thread_fork("waker", waker_thread, NULL, 0, NULL);
 	if (result) {
 		panic("thread_fork failed: %s\n", strerror(result));
 	}
@@ -188,7 +180,7 @@ compute_thread(void *junk1, unsigned long num)
 				m2->m[i][j] = rand & 0xffff;
 			}
 		}
-
+		
 		for (i=0; i<DIM; i++) {
 			for (j=0; j<DIM; j++) {
 				tot = 0;
@@ -198,7 +190,7 @@ compute_thread(void *junk1, unsigned long num)
 				m3->m[i][j] = tot;
 			}
 		}
-
+		
 		tot = 0;
 		for (i=0; i<DIM; i++) {
 			tot += m3->m[i][i];
@@ -224,7 +216,7 @@ make_computes(int howmany)
 
 	for (i=0; i<howmany; i++) {
 		snprintf(name, sizeof(name), "compute%d", i);
-		result = thread_fork(name, NULL, compute_thread, NULL, i);
+		result = thread_fork(name, compute_thread, NULL, i, NULL);
 		if (result) {
 			panic("thread_fork failed: %s\n", strerror(result));
 		}

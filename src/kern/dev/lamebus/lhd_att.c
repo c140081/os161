@@ -38,13 +38,15 @@
 
 /* Lowest revision we support */
 #define LOW_VERSION   2
+/* Highest revision we support */
+#define HIGH_VERSION  2
 
 struct lhd_softc *
 attach_lhd_to_lamebus(int lhdno, struct lamebus_softc *sc)
 {
 	struct lhd_softc *lh;
 	int slot = lamebus_probe(sc, LB_VENDOR_CS161, LBCS161_DISK,
-				 LOW_VERSION, NULL);
+				 LOW_VERSION, HIGH_VERSION);
 	if (slot < 0) {
 		/* None found */
 		return NULL;

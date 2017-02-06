@@ -34,13 +34,10 @@
 #include "autoconf.h"
 
 /* Registers (offsets within slot) */
-#define LTRACE_REG_TRON    0	/* trace on */
-#define LTRACE_REG_TROFF   4	/* trace off */
-#define LTRACE_REG_DEBUG   8	/* debug code */
-#define LTRACE_REG_DUMP    12	/* dump the system */
-#define LTRACE_REG_STOP    16	/* stop for the debugger */
-#define LTRACE_REG_PROFEN  20	/* turn profiling on/off */
-#define LTRACE_REG_PROFCL  24	/* clear the profile */
+#define LTRACE_REG_TRON    0
+#define LTRACE_REG_TROFF   4
+#define LTRACE_REG_DEBUG   8
+#define LTRACE_REG_DUMP    12
 
 static struct ltrace_softc *the_trace;
 
@@ -77,33 +74,6 @@ ltrace_dump(uint32_t code)
 	if (the_trace != NULL) {
 		bus_write_register(the_trace->lt_busdata, the_trace->lt_buspos,
 				   LTRACE_REG_DUMP, code);
-	}
-}
-
-void
-ltrace_stop(uint32_t code)
-{
-	if (the_trace != NULL && the_trace->lt_canstop) {
-		bus_write_register(the_trace->lt_busdata, the_trace->lt_buspos,
-				   LTRACE_REG_STOP, code);
-	}
-}
-
-void
-ltrace_setprof(uint32_t onoff)
-{
-	if (the_trace != NULL && the_trace->lt_canprof) {
-		bus_write_register(the_trace->lt_busdata, the_trace->lt_buspos,
-				   LTRACE_REG_PROFEN, onoff);
-	}
-}
-
-void
-ltrace_eraseprof(void)
-{
-	if (the_trace != NULL && the_trace->lt_canprof) {
-		bus_write_register(the_trace->lt_busdata, the_trace->lt_buspos,
-				   LTRACE_REG_PROFCL, 1);
 	}
 }
 

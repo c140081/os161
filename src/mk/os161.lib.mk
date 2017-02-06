@@ -37,8 +37,7 @@ MKDIRS+=$(OSTREE)$(LIBDIR)
 
 # Default rule: create the program.
 # (In make the first rule found is the default.)
-all: all-local
-all-local: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_LIB_)
+all: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_LIB_)
 
 # Now get rules to compile the SRCS.
 .include "$(TOP)/mk/os161.compile.mk"
@@ -56,16 +55,16 @@ all-local: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_LIB_)
 # Note that we make a hard link instead of a copy by default to reduce
 # overhead.
 #
-install-staging-local: $(INSTALLTOP)$(LIBDIR) .WAIT $(INSTALLTOP)$(LIBDIR)/$(_LIB_)
+install-staging: $(INSTALLTOP)$(LIBDIR) .WAIT $(INSTALLTOP)$(LIBDIR)/$(_LIB_)
 $(INSTALLTOP)$(LIBDIR)/$(_LIB_): $(MYBUILDDIR)/$(_LIB_)
 	rm -f $(.TARGET)
-	ln $(MYBUILDDIR)/$(_LIB_) $(.TARGET) >/dev/null 2>&1 || \
+	ln $(MYBUILDDIR)/$(_LIB_) $(.TARGET) || \
 	  cp $(MYBUILDDIR)/$(_LIB_) $(.TARGET)
 
-install-local: $(OSTREE)$(LIBDIR) $(MYBUILDDIR)/$(_LIB_)
+install: $(OSTREE)$(LIBDIR) $(MYBUILDDIR)/$(_LIB_)
 	@echo "Warning: manually installing library without relinking anything"
 	rm -f $(OSTREE)$(LIBDIR)/$(_LIB_)
-	ln $(MYBUILDDIR)/$(_LIB_) $(OSTREE)$(LIBDIR)/$(_LIB_) >/dev/null 2>&1 || \
+	ln $(MYBUILDDIR)/$(_LIB_) $(OSTREE)$(LIBDIR)/$(_LIB_) || \
 	  cp $(MYBUILDDIR)/$(_LIB_) $(OSTREE)$(LIBDIR)/$(_LIB_)
 
 # Build the library.
@@ -76,7 +75,7 @@ $(MYBUILDDIR)/$(_LIB_): $(OBJS)
 
 # Mark targets that don't represent files PHONY, to prevent various
 # lossage if files by those names appear.
-.PHONY: all all-local install-staging-local install-local
+.PHONY: all install-staging install
 
 # Finally, get the shared definitions for the most basic rules.
 .include "$(TOP)/mk/os161.baserules.mk"

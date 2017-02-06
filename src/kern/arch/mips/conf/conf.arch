@@ -57,7 +57,6 @@ machine mips file    arch/mips/thread/threadstart.S	# New thread startup
 # The platform should select TLB handling from among these:
 #
 #    tlb-mips1.S
-#    tlb-mips161.S
 #    tlb-mips32.S
 #
 
@@ -76,4 +75,4 @@ machine mips optfile dumbvm    arch/mips/vm/dumbvm.c
 #
 # System call layer
 #
-machine mips file    arch/mips/syscall/syscall.c	# System call handler
+machine mips file    arch/mips/syscall/syscall.c	# System call handler 

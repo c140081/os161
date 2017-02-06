@@ -102,11 +102,12 @@ runthreads(int doloud)
 
 	for (i=0; i<NTHREADS; i++) {
 		snprintf(name, sizeof(name), "threadtest%d", i);
-		result = thread_fork(name, NULL,
+		result = thread_fork(name,
 				     doloud ? loudthread : quietthread,
-				     NULL, i);
+				     NULL, i,
+				     NULL);
 		if (result) {
-			panic("threadtest: thread_fork failed %s)\n",
+			panic("threadtest: thread_fork failed %s)\n", 
 			      strerror(result));
 		}
 	}

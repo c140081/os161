@@ -20,37 +20,37 @@
 #
 
 all depend install-staging clean distclean tags: ;
-all-local depend-local install-staging-local clean-local distclean-local: ;
 
 .for _SRC_ _DEST_ in $(INCLUDES)
 MKDIRS+=$(INSTALLTOP)/$(_DEST_)
-includes: $(INSTALLTOP)/$(_DEST_) .WAIT
+includes: $(INSTALLTOP)/$(_DEST_)
 
 MKDIRS+=$(OSTREE)/$(_DEST_)
-install: $(OSTREE)/$(_DEST_) .WAIT
+install: $(OSTREE)/$(_DEST_)
 .endfor
 
-includes: includes-local
-includes-local:
+includes:
 .for _SRC_ _DEST_ in $(INCLUDES)
 	$(TOP)/mk/installheaders.sh $(_SRC_) $(INSTALLTOP)/$(_DEST_)
 .endfor
 .for _TGT_ _LINK_ in $(INCLUDELINKS)
-	[ -h $(INSTALLTOP)/$(_LINK_) ] || \
-		ln -sf $(_TGT_) $(INSTALLTOP)/$(_LINK_)
+	ln -sf $(_TGT_) $(INSTALLTOP)/$(_LINK_)
 .endfor
 
-install-local:
+install:
 .for _SRC_ _DEST_ in $(INCLUDES)
 	$(TOP)/mk/installheaders.sh $(_SRC_) $(OSTREE)/$(_DEST_)
 .endfor
 .for _TGT_ _LINK_ in $(INCLUDELINKS)
-	[ -h $(INSTALLTOP)/$(_LINK_) ] || \
-		ln -sf $(_TGT_) $(INSTALLTOP)/$(_LINK_)
+	ln -sf $(_TGT_) $(INSTALLTOP)/$(_LINK_)
 .endfor
 
 .PHONY: all depend install-staging clean distclean tags
-.PHONY: includes includes-local install-local
+.PHONY: includes install
 
 .include "$(TOP)/mk/os161.baserules.mk"
+
+
+foo:
+	echo $(OSTREE)
 

@@ -40,20 +40,12 @@ typedef unsigned spinlock_data_t;
 #define SPINLOCK_DATA_INITIALIZER	0
 
 /* Atomic operations on spinlock_data_t */
-SPINLOCK_INLINE
 void spinlock_data_set(volatile spinlock_data_t *sd, unsigned val);
-SPINLOCK_INLINE
 spinlock_data_t spinlock_data_get(volatile spinlock_data_t *sd);
-SPINLOCK_INLINE
 spinlock_data_t spinlock_data_testandset(volatile spinlock_data_t *sd);
 
 ////////////////////////////////////////////////////////////
 
-/*
- * Assign a spinlock_data_t. On mips assigment of a plain 32-bit value
- * is one instruction, and instructions are atomic with respect to
- * memory.
- */
 SPINLOCK_INLINE
 void
 spinlock_data_set(volatile spinlock_data_t *sd, unsigned val)
@@ -61,10 +53,6 @@ spinlock_data_set(volatile spinlock_data_t *sd, unsigned val)
 	*sd = val;
 }
 
-/*
- * Read a spinlock_data_t. On mips reading a plain 32-bit value is one
- * instruction, and instructions are atomic with respect to memory.
- */
 SPINLOCK_INLINE
 spinlock_data_t
 spinlock_data_get(volatile spinlock_data_t *sd)
@@ -72,19 +60,6 @@ spinlock_data_get(volatile spinlock_data_t *sd)
 	return *sd;
 }
 
-/*
- * Test-and-set a spinlock_data_t. Use the LL/SC instructions to
- * make it atomic.
- *
- * LL (load linked) loads a machine word from memory, and marks the
- * address. SC (store conditional) stores a machine word to memory,
- * but succeeds only if the address is marked from a previous LL on
- * the same processor. Stores from other processors clear that mark,
- * as do traps on the current processor. Note that there may be no
- * other memory accesses (besides instruction fetches) between the LL
- * and the SC or the behavior is *undefined*. You can only use LL/SC
- * to atomically update one machine word.
- */
 SPINLOCK_INLINE
 spinlock_data_t
 spinlock_data_testandset(volatile spinlock_data_t *sd)
@@ -111,7 +86,7 @@ spinlock_data_testandset(volatile spinlock_data_t *sd)
 		"ll %0, 0(%2);"		/*   x = *sd */
 		"sc %1, 0(%2);"		/*   *sd = y; y = success? */
 		".set pop"		/* restore assembler mode */
-		: "=&r" (x), "+r" (y) : "r" (sd));
+		: "=r" (x), "+r" (y) : "r" (sd));
 	if (y == 0) {
 		return 1;
 	}

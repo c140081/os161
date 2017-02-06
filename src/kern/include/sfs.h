@@ -43,27 +43,21 @@
 #include <vnode.h>
 
 /*
- * Get on-disk structures and constants that are made available to
+ * Get on-disk structures and constants that are made available to 
  * userland for the benefit of mksfs, dumpsfs, etc.
  */
 #include <kern/sfs.h>
 
-/*
- * In-memory inode
- */
 struct sfs_vnode {
-	struct vnode sv_absvn;          /* abstract vnode structure */
-	struct sfs_dinode sv_i;		/* copy of on-disk inode */
+	struct vnode sv_v;              /* abstract vnode structure */
+	struct sfs_inode sv_i;		/* on-disk inode */
 	uint32_t sv_ino;                /* inode number */
 	bool sv_dirty;                  /* true if sv_i modified */
 };
 
-/*
- * In-memory info for a whole fs volume
- */
 struct sfs_fs {
 	struct fs sfs_absfs;            /* abstract filesystem structure */
-	struct sfs_superblock sfs_sb;	/* copy of on-disk superblock */
+	struct sfs_super sfs_super;	/* on-disk superblock */
 	bool sfs_superdirty;            /* true if superblock modified */
 	struct device *sfs_device;      /* device mounted on */
 	struct vnodearray *sfs_vnodes;  /* vnodes loaded into memory */
@@ -75,6 +69,23 @@ struct sfs_fs {
  * Function for mounting a sfs (calls vfs_mount)
  */
 int sfs_mount(const char *device);
+
+
+/*
+ * Internal functions
+ */
+
+/* Initialize uio structure */
+#define SFSUIO(iov, uio, ptr, block, rw) \
+    uio_kinit(iov, uio, ptr, SFS_BLOCKSIZE, ((off_t)(block))*SFS_BLOCKSIZE, rw)
+
+/* Convenience functions for block I/O */
+int sfs_rwblock(struct sfs_fs *sfs, struct uio *uio);
+int sfs_rblock(struct sfs_fs *sfs, void *data, uint32_t block);
+int sfs_wblock(struct sfs_fs *sfs, void *data, uint32_t block);
+
+/* Get root vnode */
+struct vnode *sfs_getroot(struct fs *fs);
 
 
 #endif /* _SFS_H_ */

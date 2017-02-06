@@ -49,6 +49,8 @@ attach_con_to_lscreen(int consno, struct lscreen_softc *ls)
 	cs->cs_devdata = ls;
 	cs->cs_send = lscreen_write;
 	cs->cs_sendpolled = lscreen_write;
+	cs->cs_startpolling = NULL;
+	cs->cs_endpolling = NULL;
 
 	ls->ls_devdata = cs;
 	ls->ls_start = con_start;

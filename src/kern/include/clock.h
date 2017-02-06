@@ -30,48 +30,42 @@
 #ifndef _CLOCK_H_
 #define _CLOCK_H_
 
+#include "opt-synchprobs.h"
+
 /*
  * Time-related definitions.
- */
-
-#include <kern/time.h>
-
-
-/*
+ *
  * hardclock() is called on every CPU HZ times a second, possibly only
  * when the CPU is not idle, for scheduling.
+ *
+ * timerclock() is called on one CPU once a second to allow simple
+ * timed operations. (This is a fairly simpleminded interface.)
+ *
+ * gettime() may be used to fetch the current time of day.
+ * getinterval() computes the time from time1 to time2.
+ *
+ * XXX we have struct timespec now, let's use it.
  */
 
 /* hardclocks per second */
+#if OPT_SYNCHPROBS
+/* Make synchronization more exciting :) */
+#define HZ  10000
+#else
+/* More realistic value */
 #define HZ  100
+#endif
 
 void hardclock_bootstrap(void);
-void hardclock(void);
 
-/*
- * timerclock() is called on one CPU once a second to allow simple
- * timed operations. (This is a fairly simpleminded interface.)
- */
+void hardclock(void);
 void timerclock(void);
 
-/*
- * gettime() may be used to fetch the current time of day.
- */
-void gettime(struct timespec *ret);
+void gettime(time_t *seconds, uint32_t *nanoseconds);
 
-/*
- * arithmetic on times
- *
- * add: ret = t1 + t2
- * sub: ret = t1 - t2
- */
-
-void timespec_add(const struct timespec *t1,
-		  const struct timespec *t2,
-		  struct timespec *ret);
-void timespec_sub(const struct timespec *t1,
-		  const struct timespec *t2,
-		  struct timespec *ret);
+void getinterval(time_t secs1, uint32_t nsecs,
+                 time_t secs2, uint32_t nsecs2,
+                 time_t *rsecs, uint32_t *rnsecs);
 
 /*
  * clocksleep() suspends execution for the requested number of seconds,

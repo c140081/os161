@@ -34,7 +34,7 @@
  * Structure describing what is saved on the stack during entry to
  * the exception handler.
  *
- * This must agree with the code in exception-*.S.
+ * This must agree with the code in exception.S.
  */
 
 struct trapframe {
@@ -69,7 +69,7 @@ struct trapframe {
 	uint32_t tf_s7;
 	uint32_t tf_t8;
 	uint32_t tf_t9;
-	uint32_t tf_k0;		/* dummy (see exception-mips1.S comments) */
+	uint32_t tf_k0;		/* dummy (see exception.S comments) */
 	uint32_t tf_k1;		/* dummy */
 	uint32_t tf_gp;
 	uint32_t tf_sp;
@@ -98,7 +98,7 @@ struct trapframe {
  * Function to enter user mode. Does not return. The trapframe must
  * be on the thread's own stack or bad things will happen.
  */
-__DEAD void mips_usermode(struct trapframe *tf);
+void mips_usermode(struct trapframe *tf);
 
 /*
  * Arrays used to load the kernel stack and curthread on trap entry.

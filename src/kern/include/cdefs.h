@@ -43,24 +43,12 @@
 
 
 /*
- * Handy macro for the number of elements in a static array.
- */
-#define ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
-
-
-/*
- * Tell GCC how to check printf formats. Also tell it about functions
- * that don't return, as this is helpful for avoiding bogus warnings
- * about uninitialized variables.
+ * Tell GCC how to check printf formats.
  */
 #ifdef __GNUC__
 #define __PF(a,b) __attribute__((__format__(__printf__, a, b)))
-#define __DEAD    __attribute__((__noreturn__))
-#define __UNUSED  __attribute__((__unused__))
 #else
 #define __PF(a,b)
-#define __DEAD
-#define __UNUSED
 #endif
 
 
@@ -111,18 +99,17 @@
  * ensures that the out-of-line definition is the same as the inline
  * definition.
  *
- * The situation is complicated further because gcc is historically
- * not compliant with the C standard. In C99, "inline" means "do not
- * generate an out-of-line copy" and "extern inline" means "generate a
- * global out-of-line copy". In gcc, going back far longer than C99,
- * the meanings were reversed. This eventually changed, but varies
- * with compiler version and options. The macro __GNUC_STDC_INLINE__
- * is defined if the behavior is C99-compliant.
+ * The situation is complicated further because gcc is not compliant
+ * with the C standard. In C99, "inline" means "do not generate an
+ * out-of-line copy" and "extern inline" means "generate a global
+ * out-of-line copy". In gcc, the meanings are reversed. In gcc
+ * versions later than the one OS/161 currently uses, the standard
+ * behavior can be requested; if so, __GNUC_STDC_INLINE__ is defined.
+ * There does not appear to be any way to select this behavior with
+ * gcc 4.1; however, the following definitions should be future-proof.
  *
  * (Note that inline functions that appear only within a single source
- * file can safely be declared "static inline"; to avoid whining from
- * compiler in some contexts you may also want to add __UNUSED to
- * that.)
+ * file can safely be declared "static inline".)
  */
 #if defined(__GNUC__) && !defined(__GNUC_STDC_INLINE__)
 /* gcc's non-C99 inline semantics */
@@ -134,7 +121,7 @@
 
 #else
 /* something else; static inline is safest */
-#define INLINE static __UNUSED inline
+#define INLINE static inline
 #endif
 
 

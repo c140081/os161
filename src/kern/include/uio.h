@@ -31,28 +31,10 @@
 #define _UIO_H_
 
 /*
- * A uio is an abstraction encapsulating a memory block, some metadata
- * about it, and also a cursor position associated with working
- * through it. The uio structure is used to manage blocks of data
- * moved around by the kernel.
+ * Like BSD uio, but simplified a bit. (In BSD, there can be more than one
+ * iovec in a uio.)
  *
- * Note: struct iovec is in <kern/iovec.h>.
- *
- * The structure here is essentially the same as BSD uio. The
- * position is maintained by incrementing the block pointer,
- * decrementing the block size, decrementing the residue count, and
- * also incrementing the seek offset in uio_offset. The last is
- * intended to provide management for seek pointers.
- *
- * Callers of file system operations that take uios should honor the
- * uio_offset values returned by these operations, as for directories
- * they may not necessarily be byte counts and attempting to compute
- * seek positions based on byte counts can produce wrong behavior.
- *
- * File system operations calling uiomove for directory data and not
- * intending to use byte counts should update uio_offset to the
- * desired value explicitly after calling uiomove, as uiomove always
- * increments uio_offset by the number of bytes transferred.
+ * struct iovec is in <kern/iovec.h>.
  */
 
 #include <kern/iovec.h>
@@ -90,14 +72,14 @@ struct uio {
  *   (1) set up uio_iov to point to the buffer(s) you want to transfer
  *       to, and set uio_iovcnt to the number of such buffers;
  *   (2) initialize uio_offset as desired;
- *   (3) initialize uio_resid to the total amount of data that can be
+ *   (3) initialize uio_resid to the total amount of data that can be 
  *       transferred through this uio;
  *   (4) set up uio_seg and uio_rw correctly;
  *   (5) if uio_seg is UIO_SYSSPACE, set uio_space to NULL; otherwise,
  *       initialize uio_space to the address space in which the buffer
  *       should be found.
  *
- * After calling,
+ * After calling, 
  *   (1) the contents of uio_iov and uio_iovcnt may be altered and
  *       should not be interpreted;
  *   (2) uio_offset will have been incremented by the amount transferred;
@@ -109,8 +91,7 @@ struct uio {
  * is exhausted.
  *
  * Note that the actual value of uio_offset is not interpreted. It is
- * provided (and updated by uiomove) to allow for easier file seek
- * pointer management.
+ * provided to allow for easier file seek pointer management.
  *
  * When uiomove is called, the address space presently in context must
  * be the same as the one recorded in uio_space. This is an important

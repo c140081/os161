@@ -30,9 +30,6 @@
 #ifndef _ARRAY_H_
 #define _ARRAY_H_
 
-#include <cdefs.h>
-#include <lib.h>
-
 #define ARRAYS_CHECKED
 
 #ifdef ARRAYS_CHECKED
@@ -41,22 +38,16 @@
 #define ARRAYASSERT(x) ((void)(x))
 #endif
 
-#ifndef ARRAYINLINE
-#define ARRAYINLINE INLINE
-#endif
-
 /*
  * Base array type (resizeable array of void pointers) and operations.
  *
  * create - allocate an array.
  * destroy - destroy an allocated array.
  * init - initialize an array in space externally allocated.
- * cleanup - clean up an array in space externally allocated.
+ * cleanup - clean up an array in space exteranlly allocated.
  * num - return number of elements in array.
  * get - return element no. INDEX.
  * set - set element no. INDEX to VAL.
- * preallocate - allocate space without changing size; may fail and
- *       return error.
  * setsize - change size to NUM elements; may fail and return error.
  * add - append VAL to end of array; return its index in INDEX_RET if
  *       INDEX_RET isn't null; may fail and return error.
@@ -76,17 +67,20 @@ struct array *array_create(void);
 void array_destroy(struct array *);
 void array_init(struct array *);
 void array_cleanup(struct array *);
-ARRAYINLINE unsigned array_num(const struct array *);
-ARRAYINLINE void *array_get(const struct array *, unsigned index);
-ARRAYINLINE void array_set(const struct array *, unsigned index, void *val);
-int array_preallocate(struct array *, unsigned num);
+unsigned array_num(const struct array *);
+void *array_get(const struct array *, unsigned index);
+void array_set(const struct array *, unsigned index, void *val);
 int array_setsize(struct array *, unsigned num);
-ARRAYINLINE int array_add(struct array *, void *val, unsigned *index_ret);
+int array_add(struct array *, void *val, unsigned *index_ret);
 void array_remove(struct array *, unsigned index);
 
 /*
  * Inlining for base operations
  */
+
+#ifndef ARRAYINLINE
+#define ARRAYINLINE INLINE
+#endif
 
 ARRAYINLINE unsigned
 array_num(const struct array *a)
@@ -143,7 +137,7 @@ array_add(struct array *a, void *val, unsigned *index_ret)
  * in array.c.
  *
  * Example usage in e.g. item.h of some game:
- *
+ * 
  * DECLARRAY_BYTYPE(stringarray, char);
  * DECLARRAY(potion);
  * DECLARRAY(sword);
@@ -165,22 +159,21 @@ array_add(struct array *a, void *val, unsigned *index_ret)
  * the base array, except typed.
  */
 
-#define DECLARRAY_BYTYPE(ARRAY, T, INLINE) \
+#define DECLARRAY_BYTYPE(ARRAY, T) \
 	struct ARRAY {						\
 		struct array arr;				\
 	};							\
 								\
-	INLINE struct ARRAY *ARRAY##_create(void);		\
-	INLINE void ARRAY##_destroy(struct ARRAY *a);		\
-	INLINE void ARRAY##_init(struct ARRAY *a);		\
-	INLINE void ARRAY##_cleanup(struct ARRAY *a);		\
-	INLINE unsigned ARRAY##_num(const struct ARRAY *a);	\
-	INLINE T *ARRAY##_get(const struct ARRAY *a, unsigned index); \
-	INLINE void ARRAY##_set(struct ARRAY *a, unsigned index, T *val); \
-	INLINE int ARRAY##_preallocate(struct ARRAY *a, unsigned num);	\
-	INLINE int ARRAY##_setsize(struct ARRAY *a, unsigned num);	\
-	INLINE int ARRAY##_add(struct ARRAY *a, T *val, unsigned *index_ret); \
-	INLINE void ARRAY##_remove(struct ARRAY *a, unsigned index)
+	struct ARRAY *ARRAY##_create(void);			\
+	void ARRAY##_destroy(struct ARRAY *a);			\
+	void ARRAY##_init(struct ARRAY *a);			\
+	void ARRAY##_cleanup(struct ARRAY *a);			\
+	unsigned ARRAY##_num(const struct ARRAY *a);		\
+	T *ARRAY##_get(const struct ARRAY *a, unsigned index);	\
+	void ARRAY##_set(struct ARRAY *a, unsigned index, T *val); \
+	int ARRAY##_setsize(struct ARRAY *a, unsigned num);	\
+	int ARRAY##_add(struct ARRAY *a, T *val, unsigned *index_ret); \
+	void ARRAY##_remove(struct ARRAY *a, unsigned index)
 
 #define DEFARRAY_BYTYPE(ARRAY, T, INLINE) \
 	INLINE struct ARRAY *					\
@@ -232,12 +225,6 @@ array_add(struct array *a, void *val, unsigned *index_ret)
 	}							\
 								\
 	INLINE int						\
-	ARRAY##_preallocate(struct ARRAY *a, unsigned num)	\
-	{							\
-		return array_preallocate(&a->arr, num);		\
-	}							\
-								\
-	INLINE int						\
 	ARRAY##_setsize(struct ARRAY *a, unsigned num)		\
 	{							\
 		return array_setsize(&a->arr, num);		\
@@ -252,17 +239,17 @@ array_add(struct array *a, void *val, unsigned *index_ret)
 	INLINE void						\
 	ARRAY##_remove(struct ARRAY *a, unsigned index)		\
 	{							\
-		array_remove(&a->arr, index);			\
+		return array_remove(&a->arr, index);		\
 	}
 
-#define DECLARRAY(T, INLINE) DECLARRAY_BYTYPE(T##array, struct T, INLINE)
+#define DECLARRAY(T) DECLARRAY_BYTYPE(T##array, struct T)
 #define DEFARRAY(T, INLINE) DEFARRAY_BYTYPE(T##array, struct T, INLINE)
 
 /*
  * This is how you declare an array of strings; it works out as
  * an array of pointers to char.
  */
-DECLARRAY_BYTYPE(stringarray, char, ARRAYINLINE);
+DECLARRAY_BYTYPE(stringarray, char);
 DEFARRAY_BYTYPE(stringarray, char, ARRAYINLINE);
 
 

@@ -39,6 +39,9 @@
 #include <cpu.h>
 #include <thread.h>
 
+#include <../../../include/thread.h>
+#include <../../../include/types.h>
+
 ////////////////////////////////////////////////////////////
 
 /*
@@ -94,78 +97,13 @@ cpu_machdep_init(struct cpu *c)
 
 /*
  * Return the type name of the currently running CPU.
- *
- * For now, assume we're running on System/161 so we can use the
- * System/161 processor-ID values.
  */
 
-#define SYS161_PRID_ORIG	0x000003ff
-#define SYS161_PRID_2X		0x000000a1
-
-static inline
-uint32_t
-cpu_getprid(void)
+const char *
+cpu_identify(void)
 {
-	uint32_t prid;
-
-	__asm volatile("mfc0 %0,$15" : "=r" (prid));
-	return prid;
-}
-
-static inline
-uint32_t
-cpu_getfeatures(void)
-{
-	uint32_t features;
-
-	__asm volatile(".set push;"		/* save assembler mode */
-		       ".set mips32;"		/* allow mips32 instructions */
-		       "mfc0 %0,$15,1;"		/* get cop0 reg 15 sel 1 */
-		       ".set pop"		/* restore assembler mode */
-		       : "=r" (features));
-	return features;
-}
-
-static inline
-uint32_t
-cpu_getifeatures(void)
-{
-	uint32_t features;
-
-	__asm volatile(".set push;"		/* save assembler mode */
-		       ".set mips32;"		/* allow mips32 instructions */
-		       "mfc0 %0,$15,2;"		/* get cop0 reg 15 sel 2 */
-		       ".set pop"		/* restore assembler mode */
-		       : "=r" (features));
-	return features;
-}
-
-void
-cpu_identify(char *buf, size_t max)
-{
-	uint32_t prid;
-	uint32_t features;
-
-	prid = cpu_getprid();
-	switch (prid) {
-	    case SYS161_PRID_ORIG:
-		snprintf(buf, max, "MIPS/161 (System/161 1.x and pre-2.x)");
-		break;
-	    case SYS161_PRID_2X:
-		features = cpu_getfeatures();
-		snprintf(buf, max, "MIPS/161 (System/161 2.x) features 0x%x",
-			 features);
-		features = cpu_getifeatures();
-		if (features != 0) {
-			kprintf("WARNING: unknown CPU incompatible features "
-				"0x%x\n", features);
-		}
-		break;
-	    default:
-		snprintf(buf, max, "32-bit MIPS (unknown type, CPU ID 0x%x)",
-			 prid);
-		break;
-	}
+	/* XXX Ought to be more sophisticated. */
+	return "MIPS r3000";
 }
 
 ////////////////////////////////////////////////////////////
@@ -281,7 +219,7 @@ wait(void)
 /*
  * Idle the processor until something happens.
  */
-void
+void 
 cpu_idle(void)
 {
 	wait();

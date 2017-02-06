@@ -44,16 +44,16 @@ tools:
 	@true
 
 build:
-	(cd userland && $(MAKE) build)
+	(cd user && $(MAKE) build)
 	(cd man && $(MAKE) install-staging)
 
 includes tags depend:
 	(cd kern && $(MAKE) $@)
-	(cd userland && $(MAKE) $@)
+	(cd user && $(MAKE) $@)
 
 clean:
 	(cd kern && $(MAKE) $@)
-	(cd userland && $(MAKE) $@)
+	(cd user && $(MAKE) $@)
 	rm -rf $(INSTALLTOP)
 
 distclean: clean

@@ -32,15 +32,11 @@
 #include <stdarg.h>
 #include <lib.h>
 #include <spl.h>
-#include <cpu.h>
 #include <thread.h>
 #include <current.h>
 #include <synch.h>
 #include <mainbus.h>
 #include <vfs.h>          // for vfs_sync()
-#include <lamebus/ltrace.h> // for ltrace_stop()
-#include <kern/secret.h>
-#include <test.h>
 
 
 /* Flags word for DEBUG() macro. */
@@ -92,41 +88,6 @@ console_send(void *junk, const char *data, size_t len)
 }
 
 /*
- * kprintf and tprintf helper function.
- */
-static
-inline
-int
-__kprintf(const char *fmt, va_list ap)
-{
-	int chars;
-	bool dolock;
-
-	dolock = kprintf_lock != NULL
-		&& curthread->t_in_interrupt == false
-		&& curthread->t_curspl == 0
-		&& curcpu->c_spinlocks == 0;
-
-	if (dolock) {
-		lock_acquire(kprintf_lock);
-	}
-	else {
-		spinlock_acquire(&kprintf_spinlock);
-	}
-
-	chars = __vprintf(console_send, NULL, fmt, ap);
-
-	if (dolock) {
-		lock_release(kprintf_lock);
-	}
-	else {
-		spinlock_release(&kprintf_spinlock);
-	}
-
-	return chars;
-}
-
-/*
  * Printf to the console.
  */
 int
@@ -134,10 +95,31 @@ kprintf(const char *fmt, ...)
 {
 	int chars;
 	va_list ap;
+	bool dolock;
+
+	dolock = kprintf_lock != NULL
+		&& curthread->t_in_interrupt == false
+		&& curthread->t_iplhigh_count == 0;
+
+	if (dolock) {
+		lock_acquire(kprintf_lock);
+	}
+	else {
+		spinlock_acquire(&kprintf_spinlock);
+	}
+	putch_prepare();
 
 	va_start(ap, fmt);
-	chars = __kprintf(fmt, ap);
+	chars = __vprintf(console_send, NULL, fmt, ap);
 	va_end(ap);
+
+	putch_complete();
+	if (dolock) {
+		lock_release(kprintf_lock);
+	}
+	else {
+		spinlock_release(&kprintf_spinlock);
+	}
 
 	return chars;
 }
@@ -154,7 +136,7 @@ panic(const char *fmt, ...)
 
 	/*
 	 * When we reach panic, the system is usually fairly screwed up.
-	 * It's not entirely uncommon for anything else we try to do
+	 * It's not entirely uncommon for anything else we try to do 
 	 * here to trigger more panics.
 	 *
 	 * This variable makes sure that if we try to do something here,
@@ -189,27 +171,22 @@ panic(const char *fmt, ...)
 
 		/* Print the message. */
 		kprintf("panic: ");
+		putch_prepare();
 		va_start(ap, fmt);
 		__vprintf(console_send, NULL, fmt, ap);
 		va_end(ap);
+		putch_complete();
 	}
 
 	if (evil == 3) {
 		evil = 4;
 
-		/* Drop to the debugger. */
-		ltrace_stop(0);
-	}
-
-	if (evil == 4) {
-		evil = 5;
-
 		/* Try to sync the disks. */
 		vfs_sync();
 	}
 
-	if (evil == 5) {
-		evil = 6;
+	if (evil == 4) {
+		evil = 5;
 
 		/* Shut down or reboot the system. */
 		mainbus_panic();

@@ -63,8 +63,8 @@ config_rtclock(struct rtclock_softc *rtc, int unit)
 }
 
 void
-gettime(struct timespec *ts)
+gettime(time_t *secs, uint32_t *nsecs)
 {
 	KASSERT(the_clock!=NULL);
-	the_clock->rtc_gettime(the_clock->rtc_devdata, ts);
+	the_clock->rtc_gettime(the_clock->rtc_devdata, secs, nsecs);
 }

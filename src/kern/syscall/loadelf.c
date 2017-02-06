@@ -54,7 +54,7 @@
 #include <kern/errno.h>
 #include <lib.h>
 #include <uio.h>
-#include <proc.h>
+#include <thread.h>
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
@@ -76,8 +76,7 @@
  */
 static
 int
-load_segment(struct addrspace *as, struct vnode *v,
-	     off_t offset, vaddr_t vaddr,
+load_segment(struct vnode *v, off_t offset, vaddr_t vaddr, 
 	     size_t memsize, size_t filesize,
 	     int is_executable)
 {
@@ -90,7 +89,7 @@ load_segment(struct addrspace *as, struct vnode *v,
 		filesize = memsize;
 	}
 
-	DEBUG(DB_EXEC, "ELF: Loading %lu bytes to 0x%lx\n",
+	DEBUG(DB_EXEC, "ELF: Loading %lu bytes to 0x%lx\n", 
 	      (unsigned long) filesize, (unsigned long) vaddr);
 
 	iov.iov_ubase = (userptr_t)vaddr;
@@ -101,7 +100,7 @@ load_segment(struct addrspace *as, struct vnode *v,
 	u.uio_offset = offset;
 	u.uio_segflg = is_executable ? UIO_USERISPACE : UIO_USERSPACE;
 	u.uio_rw = UIO_READ;
-	u.uio_space = as;
+	u.uio_space = curthread->t_addrspace;
 
 	result = VOP_READ(v, &u);
 	if (result) {
@@ -134,14 +133,14 @@ load_segment(struct addrspace *as, struct vnode *v,
 
 		fillamt = memsize - filesize;
 		if (fillamt > 0) {
-			DEBUG(DB_EXEC, "ELF: Zero-filling %lu more bytes\n",
+			DEBUG(DB_EXEC, "ELF: Zero-filling %lu more bytes\n", 
 			      (unsigned long) fillamt);
 			u.uio_resid += fillamt;
 			result = uiomovezeros(fillamt, &u);
 		}
 	}
 #endif
-
+	
 	return result;
 }
 
@@ -158,9 +157,6 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	int result, i;
 	struct iovec iov;
 	struct uio ku;
-	struct addrspace *as;
-
-	as = proc_getas();
 
 	/*
 	 * Read the executable header from offset 0 in the file.
@@ -175,6 +171,7 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	if (ku.uio_resid != 0) {
 		/* short read; problem with executable? */
 		kprintf("ELF: short read on header - file truncated?\n");
+
 		return ENOEXEC;
 	}
 
@@ -210,7 +207,7 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	 * conceivably be more. You don't need to support such files
 	 * if it's unduly awkward to do so.
 	 *
-	 * Note that the expression eh.e_phoff + i*eh.e_phentsize is
+	 * Note that the expression eh.e_phoff + i*eh.e_phentsize is 
 	 * mandated by the ELF standard - we use sizeof(ph) to load,
 	 * because that's the structure we know, but the file on disk
 	 * might have a larger structure, so we must use e_phentsize
@@ -238,12 +235,12 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 		    case PT_MIPS_REGINFO: /* skip */ continue;
 		    case PT_LOAD: break;
 		    default:
-			kprintf("loadelf: unknown segment type %d\n",
+			kprintf("loadelf: unknown segment type %d\n", 
 				ph.p_type);
 			return ENOEXEC;
 		}
 
-		result = as_define_region(as,
+		result = as_define_region(curthread->t_addrspace,
 					  ph.p_vaddr, ph.p_memsz,
 					  ph.p_flags & PF_R,
 					  ph.p_flags & PF_W,
@@ -253,7 +250,7 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 		}
 	}
 
-	result = as_prepare_load(as);
+	result = as_prepare_load(curthread->t_addrspace);
 	if (result) {
 		return result;
 	}
@@ -283,12 +280,12 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 		    case PT_MIPS_REGINFO: /* skip */ continue;
 		    case PT_LOAD: break;
 		    default:
-			kprintf("loadelf: unknown segment type %d\n",
+			kprintf("loadelf: unknown segment type %d\n", 
 				ph.p_type);
 			return ENOEXEC;
 		}
 
-		result = load_segment(as, v, ph.p_offset, ph.p_vaddr,
+		result = load_segment(v, ph.p_offset, ph.p_vaddr, 
 				      ph.p_memsz, ph.p_filesz,
 				      ph.p_flags & PF_X);
 		if (result) {
@@ -296,7 +293,7 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 		}
 	}
 
-	result = as_complete_load(as);
+	result = as_complete_load(curthread->t_addrspace);
 	if (result) {
 		return result;
 	}

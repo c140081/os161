@@ -35,11 +35,10 @@
  * to call and a context pointer for it.
  */
 
-struct timespec;
-
 struct rtclock_softc {
 	void *rtc_devdata;
-	void (*rtc_gettime)(void *devdata, struct timespec *);
+	// XXX gettime should use struct timespec
+	void (*rtc_gettime)(void *devdata, time_t *secs, uint32_t *nsecs);
 };
 
 #endif /* _GENERIC_RTCLOCK_H_ */

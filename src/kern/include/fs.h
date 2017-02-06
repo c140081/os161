@@ -30,29 +30,18 @@
 #ifndef _FS_H_
 #define _FS_H_
 
-struct vnode; /* in vnode.h */
-
 
 /*
- * Abstract file system. (Or device accessible as a file.)
+ * Abstract filesystem. (Or device accessible as a file.)
  *
- * fs_data is a pointer to filesystem-specific data.
- */
-
-struct fs {
-	void *fs_data;
-	const struct fs_ops *fs_ops;
-};
-
-/*
- * Abstraction operations on a file system:
+ * Operations:
  *
- *      fsop_sync       - Flush all dirty buffers to disk.
- *      fsop_getvolname - Return volume name of filesystem.
- *      fsop_getroot    - Return root vnode of filesystem.
- *      fsop_unmount    - Attempt unmount of filesystem.
+ *      fs_sync       - Flush all dirty buffers to disk.
+ *      fs_getvolname - Return volume name of filesystem.
+ *      fs_getroot    - Return root vnode of filesystem.
+ *      fs_unmount    - Attempt unmount of filesystem.
  *
- * fsop_getvolname may return NULL on filesystem types that don't
+ * fs_getvolname may return NULL on filesystem types that don't
  * support the concept of a volume name. The string returned is
  * assumed to point into the filesystem's private storage and live
  * until unmount time.
@@ -61,31 +50,33 @@ struct fs {
  * to make sure such changes don't cause name conflicts. So it probably
  * should be considered fixed.
  *
- * fsop_getroot should increment the refcount of the vnode returned.
+ * fs_getroot should increment the refcount of the vnode returned.
  * It should not ever return NULL.
  *
- * If fsop_unmount returns an error, the filesystem stays mounted, and
+ * If fs_unmount returns an error, the filesystem stays mounted, and
  * consequently the struct fs instance should remain valid. On success,
  * however, the filesystem object and all storage associated with the
  * filesystem should have been discarded/released.
+ *
+ * fs_data is a pointer to filesystem-specific data.
  */
-struct fs_ops {
-	int           (*fsop_sync)(struct fs *);
-	const char   *(*fsop_getvolname)(struct fs *);
-	int           (*fsop_getroot)(struct fs *, struct vnode **);
-	int           (*fsop_unmount)(struct fs *);
+
+struct fs {
+	int           (*fs_sync)(struct fs *);
+	const char   *(*fs_getvolname)(struct fs *);
+	struct vnode *(*fs_getroot)(struct fs *);
+	int           (*fs_unmount)(struct fs *);
+
+	void *fs_data;
 };
 
 /*
  * Macros to shorten the calling sequences.
  */
-#define FSOP_SYNC(fs)        ((fs)->fs_ops->fsop_sync(fs))
-#define FSOP_GETVOLNAME(fs)  ((fs)->fs_ops->fsop_getvolname(fs))
-#define FSOP_GETROOT(fs, ret) ((fs)->fs_ops->fsop_getroot(fs, ret))
-#define FSOP_UNMOUNT(fs)     ((fs)->fs_ops->fsop_unmount(fs))
-
-/* Initialization functions for builtin fake file systems. */
-void semfs_bootstrap(void);
+#define FSOP_SYNC(fs)        ((fs)->fs_sync(fs))
+#define FSOP_GETVOLNAME(fs)  ((fs)->fs_getvolname(fs))
+#define FSOP_GETROOT(fs)     ((fs)->fs_getroot(fs))
+#define FSOP_UNMOUNT(fs)     ((fs)->fs_unmount(fs))
 
 
 #endif /* _FS_H_ */

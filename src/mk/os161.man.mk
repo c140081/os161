@@ -25,8 +25,7 @@ MKDIRS+=$(OSTREE)$(MANDIR)
 
 # Default rule: do nothing.
 # (In make the first rule found is the default.)
-all: all-local
-all-local: ;
+all: ;
 
 #
 # Install: we can install into either $(INSTALLTOP) or $(OSTREE).
@@ -38,27 +37,27 @@ all-local: ;
 # Note that we make a hard link instead of a copy by default to reduce
 # overhead.
 #
-install-staging-local: $(INSTALLTOP)$(MANDIR) .WAIT
+install-staging: $(INSTALLTOP)$(MANDIR) .WAIT
 
 .for _F_ in $(MANFILES)
-install-staging-local: $(INSTALLTOP)$(MANDIR)/$(_F_)
+install-staging: $(INSTALLTOP)$(MANDIR)/$(_F_)
 $(INSTALLTOP)$(MANDIR)/$(_F_): $(_F_)
 	rm -f $(.TARGET)
-	ln $(_F_) $(.TARGET) >/dev/null 2>&1 || cp $(_F_) $(.TARGET)
+	ln $(_F_) $(.TARGET) || cp $(_F_) $(.TARGET)
 .endfor
 
-install-local: $(OSTREE)$(MANDIR) .WAIT installmanpages
+install: $(OSTREE)$(MANDIR) .WAIT installmanpages
 installmanpages:
 .for _F_ in $(MANFILES)
 	rm -f $(OSTREE)$(MANDIR)/$(_F_)
-	ln $(_F_) $(OSTREE)$(MANDIR)/$(_F_) >/dev/null 2>&1 || \
+	ln $(_F_) $(OSTREE)$(MANDIR)/$(_F_) || \
 	  cp $(_F_) $(OSTREE)$(MANDIR)/$(_F_)
 .endfor
 
 
 # Mark targets that don't represent files PHONY, to prevent various
 # lossage if files by those names appear.
-.PHONY: all all-local install-staging-local install-local installmanpages
+.PHONY: all install-staging install installmanpages
 
 # Finally, get the shared definitions for the most basic rules.
 .include "$(TOP)/mk/os161.baserules.mk"

@@ -34,7 +34,7 @@
  * (also in small chunks) and complains if what it reads back is
  * not the same.
  *
- * The length of SLOGAN is intentionally a prime number and
+ * The length of SLOGAN is intentionally a prime number and 
  * specifically *not* a power of two.
  */
 
@@ -54,8 +54,7 @@
 #define FILENAME "fstest.tmp"
 #define NCHUNKS  720
 #define NTHREADS 12
-#define NLONG    32
-#define NCREATE  24
+#define NCREATES 32
 
 static struct semaphore *threadsem = NULL;
 
@@ -101,7 +100,7 @@ rotate(char *str, int amt)
 
 static
 void
-fstest_makename(char *buf, size_t buflen,
+fstest_makename(char *buf, size_t buflen, 
 		const char *fs, const char *namesuffix)
 {
 	snprintf(buf, buflen, "%s:%s%s", fs, FILENAME, namesuffix);
@@ -126,7 +125,7 @@ fstest_remove(const char *fs, const char *namesuffix)
 		kprintf("Could not remove %s: %s\n", name, strerror(err));
 		return -1;
 	}
-
+	
 	return 0;
 }
 
@@ -160,7 +159,7 @@ fstest_write(const char *fs, const char *namesuffix,
 	strcpy(buf, name);
 	err = vfs_open(buf, flags, 0664, &vn);
 	if (err) {
-		kprintf("Could not open %s for write: %s\n",
+		kprintf("Could not open %s for write: %s\n", 
 			name, strerror(err));
 		return -1;
 	}
@@ -198,7 +197,7 @@ fstest_write(const char *fs, const char *namesuffix,
 
 	if (bytes != shouldbytes) {
 		kprintf("%s: %lu bytes written, should have been %lu!\n",
-			name, (unsigned long) bytes,
+			name, (unsigned long) bytes, 
 			(unsigned long) (NCHUNKS*strlen(SLOGAN)));
 		vfs_remove(name);
 		return -1;
@@ -263,7 +262,7 @@ fstest_read(const char *fs, const char *namesuffix)
 
 	if (bytes != NCHUNKS*strlen(SLOGAN)) {
 		kprintf("%s: %lu bytes read, should have been %lu!\n",
-			name, (unsigned long) bytes,
+			name, (unsigned long) bytes, 
 			(unsigned long) (NCHUNKS*strlen(SLOGAN)));
 		return -1;
 	}
@@ -283,7 +282,7 @@ dofstest(const char *filesys)
 		kprintf("*** Test failed\n");
 		return;
 	}
-
+	
 	if (fstest_read(filesys, "")) {
 		kprintf("*** Test failed\n");
 		return;
@@ -326,8 +325,9 @@ doreadstress(const char *filesys)
 	}
 
 	for (i=0; i<NTHREADS; i++) {
-		err = thread_fork("readstress", NULL,
-				  readstress_thread, (char *)filesys, i);
+		err = thread_fork("readstress",
+				  readstress_thread, (char *)filesys, i, 
+				  NULL);
 		if (err) {
 			panic("readstress: thread_fork failed: %s\n",
 			      strerror(err));
@@ -342,7 +342,7 @@ doreadstress(const char *filesys)
 		kprintf("*** Test failed\n");
 		return;
 	}
-
+	
 	kprintf("*** fs read stress test done\n");
 }
 
@@ -388,8 +388,9 @@ dowritestress(const char *filesys)
 	kprintf("*** Starting fs write stress test on %s:\n", filesys);
 
 	for (i=0; i<NTHREADS; i++) {
-		err = thread_fork("writestress", NULL,
-				  writestress_thread, (char *)filesys, i);
+		err = thread_fork("writestress",
+				  writestress_thread, (char *)filesys, i, 
+				  NULL);
 		if (err) {
 			panic("thread_fork failed %s\n", strerror(err));
 		}
@@ -442,8 +443,9 @@ dowritestress2(const char *filesys)
 	vfs_close(vn);
 
 	for (i=0; i<NTHREADS; i++) {
-		err = thread_fork("writestress2", NULL,
-				  writestress2_thread, (char *)filesys, i);
+		err = thread_fork("writestress2",
+				  writestress2_thread, (char *)filesys, i, 
+				  NULL);
 		if (err) {
 			panic("writestress2: thread_fork failed: %s\n",
 			      strerror(err));
@@ -471,13 +473,13 @@ dowritestress2(const char *filesys)
 
 static
 void
-longstress_thread(void *fs, unsigned long num)
+createstress_thread(void *fs, unsigned long num)
 {
 	const char *filesys = fs;
 	int i;
 	char numstr[16];
 
-	for (i=0; i<NLONG; i++) {
+	for (i=0; i<NCREATES; i++) {
 
 		snprintf(numstr, sizeof(numstr), "%lu-%d", num, i);
 
@@ -486,7 +488,7 @@ longstress_thread(void *fs, unsigned long num)
 			V(threadsem);
 			return;
 		}
-
+		
 		if (fstest_read(filesys, numstr)) {
 			kprintf("*** Thread %lu: file %d: failed\n", num, i);
 			V(threadsem);
@@ -506,148 +508,6 @@ longstress_thread(void *fs, unsigned long num)
 
 static
 void
-dolongstress(const char *filesys)
-{
-	int i, err;
-
-	init_threadsem();
-
-	kprintf("*** Starting fs long stress test on %s:\n", filesys);
-
-	for (i=0; i<NTHREADS; i++) {
-		err = thread_fork("longstress", NULL,
-				  longstress_thread, (char *)filesys, i);
-		if (err) {
-			panic("longstress: thread_fork failed %s\n",
-			      strerror(err));
-		}
-	}
-
-	for (i=0; i<NTHREADS; i++) {
-		P(threadsem);
-	}
-
-	kprintf("*** fs long stress test done\n");
-}
-
-////////////////////////////////////////////////////////////
-
-static
-void
-createstress_thread(void *fs, unsigned long num)
-{
-	const char *filesys = fs;
-	int i, err;
-	char namesuffix[16];
-	char name[32];
-	char buf[32];
-	struct vnode *vn;
-	struct iovec iov;
-	struct uio ku;
-	size_t bytes;
-	unsigned numwritten = 0, numread = 0, numremoved = 0;
-
-	for (i=0; i<NCREATE; i++) {
-		snprintf(namesuffix, sizeof(namesuffix), "%lu-%d", num, i);
-		MAKENAME();
-
-		/* vfs_open destroys the string it's passed */
-		strcpy(buf, name);
-		err = vfs_open(buf, O_WRONLY|O_CREAT|O_TRUNC, 0664, &vn);
-		if (err) {
-			kprintf("Could not open %s for write: %s\n",
-				name, strerror(err));
-			continue;
-		}
-
-		strcpy(buf, SLOGAN);
-		rotate(buf, i);
-
-		uio_kinit(&iov, &ku, buf, strlen(SLOGAN), 0, UIO_WRITE);
-		err = VOP_WRITE(vn, &ku);
-		vfs_close(vn);
-		if (err) {
-			kprintf("%s: Write error: %s\n", name, strerror(err));
-			continue;
-		}
-		if (ku.uio_resid > 0) {
-			kprintf("%s: Short write: %lu bytes left over\n",
-				name, (unsigned long) ku.uio_resid);
-			continue;
-		}
-
-		bytes = ku.uio_offset;
-		if (bytes != strlen(SLOGAN)) {
-			kprintf("%s: %lu bytes written, expected %lu!\n",
-				name, (unsigned long) bytes,
-				(unsigned long) strlen(SLOGAN));
-			continue;
-		}
-		numwritten++;
-	}
-	kprintf("Thread %lu: %u files written\n", num, numwritten);
-
-	for (i=0; i<NCREATE; i++) {
-		snprintf(namesuffix, sizeof(namesuffix), "%lu-%d", num, i);
-		MAKENAME();
-
-		/* vfs_open destroys the string it's passed */
-		strcpy(buf, name);
-		err = vfs_open(buf, O_RDONLY, 0664, &vn);
-		if (err) {
-			kprintf("Could not open %s for read: %s\n",
-				name, strerror(err));
-			continue;
-		}
-
-		uio_kinit(&iov, &ku, buf, strlen(SLOGAN), 0, UIO_READ);
-		err = VOP_READ(vn, &ku);
-		vfs_close(vn);
-		if (err) {
-			kprintf("%s: Read error: %s\n", name, strerror(err));
-			continue;
-		}
-		if (ku.uio_resid > 0) {
-			kprintf("%s: Short read: %lu bytes left over\n",
-				name, (unsigned long) ku.uio_resid);
-			continue;
-		}
-
-		buf[strlen(SLOGAN)] = 0;
-		rotate(buf, -i);
-
-		if (strcmp(buf, SLOGAN)) {
-			kprintf("%s: Test failed: file mismatched: %s\n",
-				name, buf);
-			continue;
-		}
-
-		bytes = ku.uio_offset;
-		if (bytes != strlen(SLOGAN)) {
-			kprintf("%s: %lu bytes read, expected %lu!\n",
-				name, (unsigned long) bytes,
-				(unsigned long) strlen(SLOGAN));
-			continue;
-		}
-
-		numread++;
-	}
-	kprintf("Thread %lu: %u files read\n", num, numread);
-
-	for (i=0; i<NCREATE; i++) {
-		snprintf(namesuffix, sizeof(namesuffix), "%lu-%d", num, i);
-		if (fstest_remove(filesys, namesuffix)) {
-			continue;
-		}
-		numremoved++;
-	}
-	kprintf("Thread %lu: %u files removed\n", num, numremoved);
-
-	V(threadsem);
-}
-
-static
-void
 docreatestress(const char *filesys)
 {
 	int i, err;
@@ -657,8 +517,9 @@ docreatestress(const char *filesys)
 	kprintf("*** Starting fs create stress test on %s:\n", filesys);
 
 	for (i=0; i<NTHREADS; i++) {
-		err = thread_fork("createstress", NULL,
-				  createstress_thread, (char *)filesys, i);
+		err = thread_fork("createstress",
+				  createstress_thread, (char *)filesys, i, 
+				  NULL);
 		if (err) {
 			panic("createstress: thread_fork failed %s\n",
 			      strerror(err));
@@ -712,7 +573,6 @@ DEFTEST(fstest);
 DEFTEST(readstress);
 DEFTEST(writestress);
 DEFTEST(writestress2);
-DEFTEST(longstress);
 DEFTEST(createstress);
 
 ////////////////////////////////////////////////////////////

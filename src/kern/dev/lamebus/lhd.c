@@ -35,7 +35,6 @@
 #include <kern/errno.h>
 #include <lib.h>
 #include <uio.h>
-#include <membar.h>
 #include <synch.h>
 #include <platform/bus.h>
 #include <vfs.h>
@@ -117,7 +116,7 @@ lhd_irq(void *vlh)
 {
 	struct lhd_softc *lh = vlh;
 	uint32_t val;
-
+	
 	val = lhd_rdreg(lh, LHD_REG_STAT);
 
 	switch (val & LHD_STATEMASK) {
@@ -138,13 +137,28 @@ lhd_irq(void *vlh)
  */
 static
 int
-lhd_eachopen(struct device *d, int openflags)
+lhd_open(struct device *d, int openflags)
 {
 	/*
 	 * Don't need to do anything.
 	 */
 	(void)d;
 	(void)openflags;
+
+	return 0;
+}
+
+/*
+ * Function called when we are close()'d.
+ */
+static
+int
+lhd_close(struct device *d)
+{
+	/*
+	 * Don't need to do anything.
+	 */
+	(void)d;
 
 	return 0;
 }
@@ -202,7 +216,6 @@ lhd_io(struct device *d, struct uio *uio)
 	}
 
 	/* Don't allow I/O past the end of the disk. */
-	/* XXX this check can overflow */
 	if (sector+len > lh->lh_dev.d_blocks) {
 		return EINVAL;
 	}
@@ -224,7 +237,6 @@ lhd_io(struct device *d, struct uio *uio)
 		 */
 		if (uio->uio_rw == UIO_WRITE) {
 			result = uiomove(lh->lh_buf, LHD_SECTSIZE, uio);
-			membar_store_store();
 			if (result) {
 				V(lh->lh_clear);
 				return result;
@@ -248,7 +260,6 @@ lhd_io(struct device *d, struct uio *uio)
 		 * transfer the data out of the on-card buffer.
 		 */
 		if (result==0 && uio->uio_rw==UIO_READ) {
-			membar_load_load();
 			result = uiomove(lh->lh_buf, LHD_SECTSIZE, uio);
 		}
 
@@ -263,12 +274,6 @@ lhd_io(struct device *d, struct uio *uio)
 
 	return 0;
 }
-
-static const struct device_ops lhd_devops = {
-	.devop_eachopen = lhd_eachopen,
-	.devop_io = lhd_io,
-	.devop_ioctl = lhd_ioctl,
-};
 
 /*
  * Setup routine called by autoconf.c when an lhd is found.
@@ -297,7 +302,10 @@ config_lhd(struct lhd_softc *lh, int lhdno)
 	}
 
 	/* Set up the VFS device structure. */
-	lh->lh_dev.d_ops = &lhd_devops;
+	lh->lh_dev.d_open = lhd_open;
+	lh->lh_dev.d_close = lhd_close;
+	lh->lh_dev.d_io = lhd_io;
+	lh->lh_dev.d_ioctl = lhd_ioctl;
 	lh->lh_dev.d_blocks = bus_read_register(lh->lh_busdata, lh->lh_buspos,
 						LHD_REG_NSECT);
 	lh->lh_dev.d_blocksize = LHD_SECTSIZE;

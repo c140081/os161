@@ -41,12 +41,31 @@
 struct vnode;
 
 
-/*
+/* 
  * Address space - data structure associated with the virtual memory
  * space of a process.
  *
  * You write this.
  */
+
+struct page_table_entry{
+	vaddr_t vaddr;
+	paddr_t paddr;
+	int permissions;
+
+	struct page_table_entry *next;
+	struct page_table_entry *last;
+};
+
+struct regionlist {
+
+  vaddr_t vbase;
+  paddr_t pbase;
+  size_t npages;
+  int permissions;
+  struct regionlist *next;
+  struct regionlist * last;
+};
 
 struct addrspace {
 #if OPT_DUMBVM
@@ -59,13 +78,21 @@ struct addrspace {
         paddr_t as_stackpbase;
 #else
         /* Put stuff here for your VM system */
+        struct page_table_entry *pages;
+        struct page_table_entry *heap;
+        struct page_table_entry *stack;
+        struct regionlist * regions;
+        // int num_region;ruct
+        vaddr_t heap_start;
+        vaddr_t heap_end;
+
 #endif
 };
 
 /*
  * Functions in addrspace.c:
  *
- *    as_create - create a new empty address space. You need to make
+ *    as_create - create a new empty address space. You need to make 
  *                sure this gets called in all the right places. You
  *                may find you want to change the argument list. May
  *                return NULL on out-of-memory error.
@@ -75,13 +102,9 @@ struct addrspace {
  *                empty address space and fill it in, but that's up to
  *                you.
  *
- *    as_activate - make curproc's address space the one currently
- *                "seen" by the processor.
- *
- *    as_deactivate - unload curproc's address space so it isn't
- *                currently "seen" by the processor. This is used to
- *                avoid potentially "seeing" it while it's being
- *                destroyed.
+ *    as_activate - make the specified address space the one currently
+ *                "seen" by the processor. Argument might be NULL, 
+ *                meaning "no particular address space".
  *
  *    as_destroy - dispose of an address space. You may need to change
  *                the way this works if implementing user-level threads.
@@ -98,20 +121,16 @@ struct addrspace {
  *    as_define_stack - set up the stack region in the address space.
  *                (Normally called *after* as_complete_load().) Hands
  *                back the initial stack pointer for the new process.
- *
- * Note that when using dumbvm, addrspace.c is not used and these
- * functions are found in dumbvm.c.
  */
 
 struct addrspace *as_create(void);
 int               as_copy(struct addrspace *src, struct addrspace **ret);
-void              as_activate(void);
-void              as_deactivate(void);
+void              as_activate(struct addrspace *);
 void              as_destroy(struct addrspace *);
 
-int               as_define_region(struct addrspace *as,
+int               as_define_region(struct addrspace *as, 
                                    vaddr_t vaddr, size_t sz,
-                                   int readable,
+                                   int readable, 
                                    int writeable,
                                    int executable);
 int               as_prepare_load(struct addrspace *as);

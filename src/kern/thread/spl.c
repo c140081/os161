@@ -134,11 +134,6 @@ splx(int spl)
 	struct thread *cur = curthread;
 	int ret;
 
-	if (!CURCPU_EXISTS()) {
-		/* before curcpu initialization; interrupts are off anyway */
-		return spl;
-	}
-
 	if (cur->t_curspl < spl) {
 		/* turning interrupts off */
 		splraise(cur->t_curspl, spl);

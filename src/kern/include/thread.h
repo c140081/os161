@@ -36,11 +36,16 @@
  * Note: curthread is defined by <current.h>.
  */
 
-#include <array.h>
 #include <spinlock.h>
 #include <threadlist.h>
 
+/* User Includes */
+#include <limits.h>
+#include <kern/filecalls.h>
+
+struct addrspace;
 struct cpu;
+struct vnode;
 
 /* get machine-dependent defs */
 #include <machine/thread.h>
@@ -48,7 +53,6 @@ struct cpu;
 
 /* Size of kernel stacks; must be power of 2 */
 #define STACK_SIZE 4096
-#define MAX_NAME_LENGTH 64
 
 /* Mask for extracting the stack base address of a kernel stack pointer */
 #define STACK_MASK  (~(vaddr_t)(STACK_SIZE-1))
@@ -56,6 +60,8 @@ struct cpu;
 /* Macro to test if two addresses are on the same kernel stack */
 #define SAME_STACK(p1, p2)     (((p1) & STACK_MASK) == ((p2) & STACK_MASK))
 
+/* Global count for Process ID */
+//pid_t pid = 0;
 
 /* States a thread can be in. */
 typedef enum {
@@ -65,22 +71,15 @@ typedef enum {
 	S_ZOMBIE,	/* zombie; exited but not yet deleted */
 } threadstate_t;
 
+struct lock *elk;
+
 /* Thread structure. */
 struct thread {
 	/*
 	 * These go up front so they're easy to get to even if the
 	 * debugger is messed up.
 	 */
-
-	/*
-	 * Name of this thread. Used to be dynamically allocated using kmalloc, but
-	 * this can cause small changes in the amount of available memory due to the
-	 * fact that it was cleaned up in exorcise. This produces more predictable
-	 * behavior at the cost of a small amount of memory overhead and the
-	 * inability to give threads huge names.
-	 */
-
-	char t_name[MAX_NAME_LENGTH];
+	char *t_name;			/* Name of this thread */
 	const char *t_wchan_name;	/* Name of wait channel, if sleeping */
 	threadstate_t t_state;		/* State this thread is in */
 
@@ -92,7 +91,6 @@ struct thread {
 	void *t_stack;			/* Kernel-level stack */
 	struct switchframe *t_context;	/* Saved register context (on stack) */
 	struct cpu *t_cpu;		/* CPU thread runs on */
-	struct proc *t_proc;		/* Process thread belongs to */
 
 	/*
 	 * Interrupt state fields.
@@ -115,18 +113,19 @@ struct thread {
 	 * Public fields
 	 */
 
+	/* VM */
+	struct addrspace *t_addrspace;	/* virtual address space */
+
+	/* VFS */
+	struct vnode *t_cwd;		/* current working directory */
+
 	/* add more here as needed */
+	pid_t pid;		/* current process ID */
+	pid_t ppid;		/* Parent Process ID */
+
+	/* File Descriptor Table */
+	struct fdesc * fdtable[OPEN_MAX];
 };
-
-/*
- * Array of threads.
- */
-#ifndef THREADINLINE
-#define THREADINLINE INLINE
-#endif
-
-DECLARRAY(thread, THREADINLINE);
-DEFARRAY(thread, THREADINLINE);
 
 /* Call once during system startup to allocate data structures. */
 void thread_bootstrap(void);
@@ -141,24 +140,24 @@ void thread_panic(void);
 void thread_shutdown(void);
 
 /*
- * Make a new thread, which will start executing at "func". The thread
- * will belong to the process "proc", or to the current thread's
- * process if "proc" is null. The "data" arguments (one pointer, one
- * number) are passed to the function. The current thread is used as a
- * prototype for creating the new one. Returns an error code. The
- * thread structure for the new thread is not returned; it is not in
- * general safe to refer to it as the new thread may exit and
- * disappear at any time without notice.
+ * Make a new thread, which will start executing at "func". The "data"
+ * arguments (one pointer, one number) are passed to the function. The
+ * current thread is used as a prototype for creating the new one. If
+ * "ret" is non-null, the thread structure for the new thread is
+ * handed back. (Note that using said thread structure from the parent
+ * thread should be done only with caution, because in general the
+ * child thread might exit at any time.) Returns an error code.
  */
-int thread_fork(const char *name, struct proc *proc,
+int thread_fork(const char *name, 
                 void (*func)(void *, unsigned long),
-                void *data1, unsigned long data2);
+                void *data1, unsigned long data2, 
+                struct thread **ret);
 
 /*
  * Cause the current thread to exit.
  * Interrupts need not be disabled.
  */
-__DEAD void thread_exit(void);
+void thread_exit(void);
 
 /*
  * Cause the current thread to yield to the next runnable thread, but
@@ -178,7 +177,5 @@ void schedule(void);
  */
 void thread_consider_migration(void);
 
-extern unsigned thread_count;
-void thread_wait_for_count(unsigned);
 
 #endif /* _THREAD_H_ */

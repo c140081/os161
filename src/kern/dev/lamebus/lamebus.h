@@ -44,7 +44,7 @@
 #define LB_VENDOR_CS161      1
 
 /* CS161 devices */
-#define LBCS161_UPBUSCTL     1
+#define LBCS161_BUSCTL       1
 #define LBCS161_TIMER        2
 #define LBCS161_DISK         3
 #define LBCS161_SERIAL       4
@@ -53,7 +53,6 @@
 #define LBCS161_EMUFS        7
 #define LBCS161_TRACE        8
 #define LBCS161_RANDOM       9
-#define LBCS161_MPBUSCTL     10
 
 /* LAMEbus controller always goes in slot 31 */
 #define LB_CONTROLLER_SLOT   31
@@ -82,13 +81,10 @@ typedef void (*lb_irqfunc)(void *devdata);
 struct lamebus_softc {
 	struct spinlock ls_lock;
 
-	/* Accessed from interrupts; synchronized with ls_lock */
+	/* Accessed from interrupts; synchronized with ls_lock */ 
 	uint32_t     ls_slotsinuse;
 	void        *ls_devdata[LB_NSLOTS];
 	lb_irqfunc   ls_irqfuncs[LB_NSLOTS];
-
-	/* Read-only once set early in boot */
-	unsigned     ls_uniprocessor;
 };
 
 /*
@@ -107,19 +103,19 @@ void lamebus_find_cpus(struct lamebus_softc *lamebus);
 void lamebus_start_cpus(struct lamebus_softc *lamebus);
 
 /*
- * Look for a not-in-use slot containing a device whose vendor and device
+ * Look for a not-in-use slot containing a device whose vendor and device 
  * ids match those provided, and whose version is in the range between
  * lowver and highver, inclusive.
  *
  * Returns a slot number (0-31) or -1 if no such device is found.
  */
-int lamebus_probe(struct lamebus_softc *,
-		  uint32_t vendorid, uint32_t deviceid,
-		  uint32_t lowver, uint32_t *version_ret);
+int lamebus_probe(struct lamebus_softc *, 
+		  uint32_t vendorid, uint32_t deviceid, 
+		  uint32_t lowver, uint32_t highver);
 
 /*
  * Mark a slot in-use (that is, has a device driver attached to it),
- * or unmark it. It is a fatal error to mark a slot that is already
+ * or unmark it. It is a fatal error to mark a slot that is already 
  * in use, or unmark a slot that is not in use.
  */
 void lamebus_mark(struct lamebus_softc *, int slot);
@@ -129,7 +125,7 @@ void lamebus_unmark(struct lamebus_softc *, int slot);
  * Attach to an interrupt.
  */
 void lamebus_attach_interrupt(struct lamebus_softc *, int slot,
-			      void *devdata,
+			      void *devdata, 
 			      void (*irqfunc)(void *devdata));
 /*
  * Detach from interrupt.
