@@ -27,16 +27,14 @@
  * SUCH DAMAGE.
  */
 
-/* Make sure to build out-of-line versions of inline functions */
+/* Make sure to build out-of-line versions of spinlock inline functions */
 #define SPINLOCK_INLINE   /* empty */
-#define MEMBAR_INLINE     /* empty */
 
 #include <types.h>
 #include <lib.h>
 #include <cpu.h>
 #include <spl.h>
 #include <spinlock.h>
-#include <membar.h>
 #include <current.h>	/* for curcpu */
 
 /*
@@ -48,20 +46,20 @@
  * Initialize spinlock.
  */
 void
-spinlock_init(struct spinlock *splk)
+spinlock_init(struct spinlock *lk)
 {
-	spinlock_data_set(&splk->splk_lock, 0);
-	splk->splk_holder = NULL;
+	spinlock_data_set(&lk->lk_lock, 0);
+	lk->lk_holder = NULL;
 }
 
 /*
  * Clean up spinlock.
  */
 void
-spinlock_cleanup(struct spinlock *splk)
+spinlock_cleanup(struct spinlock *lk)
 {
-	KASSERT(splk->splk_holder == NULL);
-	KASSERT(spinlock_data_get(&splk->splk_lock) == 0);
+	KASSERT(lk->lk_holder == NULL);
+	KASSERT(spinlock_data_get(&lk->lk_lock) == 0);
 }
 
 /*
@@ -72,7 +70,7 @@ spinlock_cleanup(struct spinlock *splk)
  * atomic operation to wait for the lock to be free.
  */
 void
-spinlock_acquire(struct spinlock *splk)
+spinlock_acquire(struct spinlock *lk)
 {
 	struct cpu *mycpu;
 
@@ -81,10 +79,9 @@ spinlock_acquire(struct spinlock *splk)
 	/* this must work before curcpu initialization */
 	if (CURCPU_EXISTS()) {
 		mycpu = curcpu->c_self;
-		if (splk->splk_holder == mycpu) {
-			panic("Deadlock on spinlock %p\n", splk);
+		if (lk->lk_holder == mycpu) {
+			panic("Deadlock on spinlock %p\n", lk);
 		}
-		mycpu->c_spinlocks++;
 	}
 	else {
 		mycpu = NULL;
@@ -101,48 +98,44 @@ spinlock_acquire(struct spinlock *splk)
 		 * previously unheld and we now own it. If it was 1,
 		 * we don't.
 		 */
-		if (spinlock_data_get(&splk->splk_lock) != 0) {
+		if (spinlock_data_get(&lk->lk_lock) != 0) {
 			continue;
 		}
-		if (spinlock_data_testandset(&splk->splk_lock) != 0) {
+		if (spinlock_data_testandset(&lk->lk_lock) != 0) {
 			continue;
 		}
 		break;
 	}
 
-	membar_store_any();
-	splk->splk_holder = mycpu;
+	lk->lk_holder = mycpu;
 }
 
 /*
  * Release the lock.
  */
 void
-spinlock_release(struct spinlock *splk)
+spinlock_release(struct spinlock *lk)
 {
 	/* this must work before curcpu initialization */
 	if (CURCPU_EXISTS()) {
-		KASSERT(splk->splk_holder == curcpu->c_self);
-		KASSERT(curcpu->c_spinlocks > 0);
-		curcpu->c_spinlocks--;
+		KASSERT(lk->lk_holder == curcpu->c_self);
 	}
 
-	splk->splk_holder = NULL;
-	membar_any_store();
-	spinlock_data_set(&splk->splk_lock, 0);
+	lk->lk_holder = NULL;
+	spinlock_data_set(&lk->lk_lock, 0);
 	spllower(IPL_HIGH, IPL_NONE);
 }
 
 /*
  * Check if the current cpu holds the lock.
- */
+ */ 
 bool
-spinlock_do_i_hold(struct spinlock *splk)
+spinlock_do_i_hold(struct spinlock *lk)
 {
 	if (!CURCPU_EXISTS()) {
 		return true;
 	}
 
-	/* Assume we can read splk_holder atomically enough for this to work */
-	return (splk->splk_holder == curcpu->c_self);
+	/* Assume we can read lk_holder atomically enough for this to work */
+	return (lk->lk_holder == curcpu->c_self);
 }

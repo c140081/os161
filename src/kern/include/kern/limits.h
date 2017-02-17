@@ -37,23 +37,15 @@
  * in libc. Use <limits.h> (in either userspace or the kernel) to get
  * the proper names.
  *
- * These are Unix-style limits that Unix defines; you can change them
- * around or add others as needed or as are appropriate to your system
- * design.
- *
+ * These are Unix-style limits that Unix; you can change them around
+ * or add others as needed or as are appropriate to your system design.
  * Likewise, the default values provided here are fairly reasonable,
- * but you can change them around pretty freely and userspace code
- * should adapt. Do change these as needed to match your
- * implementation.
+ * but you can change them around pretty freely.
  */
 
 
 /*
  * Important, both as part of the system call API and for system behavior.
- *
- * 255 for NAME_MAX and 1024 for PATH_MAX are conventional. ARG_MAX
- * should be at least 16K. In real systems it often runs to 256K or
- * more.
  */
 
 /* Longest filename (without directory) not including null terminator */
@@ -62,33 +54,27 @@
 /* Longest full path name */
 #define __PATH_MAX      1024
 
-/* Max bytes for an exec function (should be at least 16K) */
+/* Max bytes for an exec function */
 #define __ARG_MAX       (64 * 1024)
 
 
 /*
  * Important for system behavior, but not a big part of the API.
- *
- * Most modern systems don't have OPEN_MAX at all, and instead go by
- * whatever limit is set with setrlimit().
  */
 
 /* Min value for a process ID (that can be assigned to a user process) */
 #define __PID_MIN       2
 
-/* Max value for a process ID (change this to match your implementation) */
+/* Max value for a process ID */
 #define __PID_MAX       32767
-
-/* Max open files per process */
-#define __OPEN_MAX      128
+//#define __PID_MAX       50
 
 /* Max bytes for atomic pipe I/O -- see description in the pipe() man page */
 #define __PIPE_BUF      512
 
 
 /*
- * Not so important parts of the API. (Especially in OS/161 where we
- * don't do credentials by default.)
+ * Not so important parts of the API.
  */
 
 /* Max number of supplemental group IDs in process credentials */
@@ -100,7 +86,14 @@
 
 /*
  * Not very important at all.
+ *
+ * Most modern systems don't have OPEN_MAX at all, and instead go by
+ * whatever limit is set with setrlimit().
  */
+
+/* Max open files per process */
+#define __OPEN_MAX      128
+//#define __OPEN_MAX      5
 
 /* Max number of iovec structures at once for readv/writev/preadv/pwritev */
 #define __IOV_MAX       1024

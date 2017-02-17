@@ -36,7 +36,7 @@
 #include <stat.h>
 #include <lib.h>
 #include <uio.h>
-#include <proc.h>
+#include <thread.h>
 #include <current.h>
 #include <vfs.h>
 #include <fs.h>
@@ -44,21 +44,22 @@
 
 /*
  * Get current directory as a vnode.
+ * 
+ * We do not synchronize curthread->t_cwd, because it belongs exclusively
+ * to its own thread; no other threads should access it.
  */
 int
 vfs_getcurdir(struct vnode **ret)
 {
 	int rv = 0;
 
-	spinlock_acquire(&curproc->p_lock);
-	if (curproc->p_cwd!=NULL) {
-		VOP_INCREF(curproc->p_cwd);
-		*ret = curproc->p_cwd;
+	if (curthread->t_cwd!=NULL) {
+		VOP_INCREF(curthread->t_cwd);
+		*ret = curthread->t_cwd;
 	}
 	else {
 		rv = ENOENT;
 	}
-	spinlock_release(&curproc->p_lock);
 
 	return rv;
 }
@@ -84,12 +85,10 @@ vfs_setcurdir(struct vnode *dir)
 
 	VOP_INCREF(dir);
 
-	spinlock_acquire(&curproc->p_lock);
-	old = curproc->p_cwd;
-	curproc->p_cwd = dir;
-	spinlock_release(&curproc->p_lock);
+	old = curthread->t_cwd;
+	curthread->t_cwd = dir;
 
-	if (old!=NULL) {
+	if (old!=NULL) { 
 		VOP_DECREF(old);
 	}
 
@@ -104,12 +103,10 @@ vfs_clearcurdir(void)
 {
 	struct vnode *old;
 
-	spinlock_acquire(&curproc->p_lock);
-	old = curproc->p_cwd;
-	curproc->p_cwd = NULL;
-	spinlock_release(&curproc->p_lock);
+	old = curthread->t_cwd;
+	curthread->t_cwd = NULL;
 
-	if (old!=NULL) {
+	if (old!=NULL) { 
 		VOP_DECREF(old);
 	}
 

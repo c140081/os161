@@ -44,6 +44,8 @@ struct con_softc {
 	void *cs_devdata;
 	void (*cs_send)(void *devdata, int ch);
 	void (*cs_sendpolled)(void *devdata, int ch);
+	void (*cs_startpolling)(void *devdata);
+	void (*cs_endpolling)(void *devdata);
 
 	/* initialized by config routine */
 	struct semaphore *cs_rsem;

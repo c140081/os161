@@ -30,10 +30,9 @@
 #ifndef _VNODE_H_
 #define _VNODE_H_
 
-#include <spinlock.h>
+
 struct uio;
 struct stat;
-
 
 /*
  * A struct vnode is an abstract representation of a file.
@@ -47,10 +46,14 @@ struct stat;
  * Abstract low-level file.
  *
  * Note: vn_fs may be null if the vnode refers to a device.
+ *
+ * vn_opencount is managed using VOP_INCOPEN and VOP_DECOPEN by
+ * vfs_open() and vfs_close(). Code above the VFS layer should not
+ * need to worry about it.
  */
 struct vnode {
 	int vn_refcount;                /* Reference count */
-	struct spinlock vn_countlock;   /* Lock for vn_refcount */
+	int vn_opencount;
 
 	struct fs *vn_fs;               /* Filesystem vnode belongs to */
 
@@ -66,17 +69,27 @@ struct vnode {
  * that expands to vnode->vn_ops->vop_foo(vnode, args). The operations
  * "foo" are:
  *
- *    vop_eachopen    - Called on *each* open() of a file. Can be used to
+ *    vop_open        - Called on *each* open() of a file. Can be used to
  *                      reject illegal or undesired open modes. Note that
  *                      various operations can be performed without the
  *                      file actually being opened.
- *                      The vnode need not look at O_CREAT, O_EXCL, or
+ *                      The vnode need not look at O_CREAT, O_EXCL, or 
  *                      O_TRUNC, as these are handled in the VFS layer.
  *
- *                      VOP_EACHOPEN should not be called directly from
- *                      above the VFS layer - use vfs_open() to open vnodes.
+ *                      VOP_OPEN should not be called directly from above
+ *                      the VFS layer - use vfs_open() to open vnodes.
+ *                      This maintains the open count so VOP_CLOSE can be
+ *                      called at the right time.
  *
- *    vop_reclaim     - Called when vnode is no longer in use.
+ *    vop_close       - To be called on *last* close() of a file.
+ *
+ *                      VOP_CLOSE should not be called directly from above
+ *                      the VFS layer - use vfs_close() to close vnodes
+ *                      opened with vfs_open().
+ *
+ *    vop_reclaim     - Called when vnode is no longer in use. Note that
+ *                      this may be substantially after vop_close is
+ *                      called.
  *
  *****************************************
  *
@@ -107,15 +120,17 @@ struct vnode {
  *                      DATA. The interpretation of the data is specific
  *                      to each ioctl.
  *
- *    vop_stat        - Return info about a file. The pointer is a
+ *    vop_stat        - Return info about a file. The pointer is a 
  *                      pointer to struct stat; see kern/stat.h.
  *
  *    vop_gettype     - Return type of file. The values for file types
  *                      are in kern/stattypes.h.
  *
- *    vop_isseekable  - Check if this file is seekable. All regular files
- *                      and directories are seekable, but some devices are
- *                      not.
+ *    vop_tryseek     - Check if seeking to the specified position within
+ *                      the file is legal. (For instance, all seeks
+ *                      are illegal on serial port devices, and seeks
+ *                      past EOF on files whose sizes are fixed may be
+ *                      as well.)
  *
  *    vop_fsync       - Force any dirty buffers associated with this file
  *                      to stable storage.
@@ -148,12 +163,12 @@ struct vnode {
  *    vop_link        - Create hard link, with name NAME, to file FILE
  *                      in the passed directory DIR.
  *
- *    vop_remove      - Delete non-directory object NAME from passed
+ *    vop_remove      - Delete non-directory object NAME from passed 
  *                      directory. If NAME refers to a directory,
  *                      return EISDIR. If passed vnode is not a
  *                      directory, return ENOTDIR.
  *
- *    vop_rmdir       - Delete directory object NAME from passed
+ *    vop_rmdir       - Delete directory object NAME from passed 
  *                      directory.
  *
  *    vop_rename      - Rename file NAME1 in directory VN1 to be
@@ -180,7 +195,8 @@ struct vnode {
 struct vnode_ops {
 	unsigned long vop_magic;	/* should always be VOP_MAGIC */
 
-	int (*vop_eachopen)(struct vnode *object, int flags_from_open);
+	int (*vop_open)(struct vnode *object, int flags_from_open);
+	int (*vop_close)(struct vnode *object);
 	int (*vop_reclaim)(struct vnode *vnode);
 
 
@@ -191,32 +207,32 @@ struct vnode_ops {
 	int (*vop_ioctl)(struct vnode *object, int op, userptr_t data);
 	int (*vop_stat)(struct vnode *object, struct stat *statbuf);
 	int (*vop_gettype)(struct vnode *object, mode_t *result);
-	bool (*vop_isseekable)(struct vnode *object);
+	int (*vop_tryseek)(struct vnode *object, off_t pos);
 	int (*vop_fsync)(struct vnode *object);
 	int (*vop_mmap)(struct vnode *file /* add stuff */);
 	int (*vop_truncate)(struct vnode *file, off_t len);
 	int (*vop_namefile)(struct vnode *file, struct uio *uio);
 
 
-	int (*vop_creat)(struct vnode *dir,
+	int (*vop_creat)(struct vnode *dir, 
 			 const char *name, bool excl, mode_t mode,
 			 struct vnode **result);
-	int (*vop_symlink)(struct vnode *dir,
+	int (*vop_symlink)(struct vnode *dir, 
 			   const char *contents, const char *name);
-	int (*vop_mkdir)(struct vnode *parentdir,
+	int (*vop_mkdir)(struct vnode *parentdir, 
 			 const char *name, mode_t mode);
-	int (*vop_link)(struct vnode *dir,
+	int (*vop_link)(struct vnode *dir, 
 			const char *name, struct vnode *file);
-	int (*vop_remove)(struct vnode *dir,
+	int (*vop_remove)(struct vnode *dir, 
 			  const char *name);
 	int (*vop_rmdir)(struct vnode *dir,
 			 const char *name);
 
-	int (*vop_rename)(struct vnode *vn1, const char *name1,
+	int (*vop_rename)(struct vnode *vn1, const char *name1, 
 			  struct vnode *vn2, const char *name2);
 
-
-	int (*vop_lookup)(struct vnode *dir,
+	
+	int (*vop_lookup)(struct vnode *dir, 
 			  char *pathname, struct vnode **result);
 	int (*vop_lookparent)(struct vnode *dir,
 			      char *pathname, struct vnode **result,
@@ -225,7 +241,8 @@ struct vnode_ops {
 
 #define __VOP(vn, sym) (vnode_check(vn, #sym), (vn)->vn_ops->vop_##sym)
 
-#define VOP_EACHOPEN(vn, flags)         (__VOP(vn, eachopen)(vn, flags))
+#define VOP_OPEN(vn, flags)             (__VOP(vn, open)(vn, flags))
+#define VOP_CLOSE(vn)                   (__VOP(vn, close)(vn))
 #define VOP_RECLAIM(vn)                 (__VOP(vn, reclaim)(vn))
 
 #define VOP_READ(vn, uio)               (__VOP(vn, read)(vn, uio))
@@ -235,7 +252,7 @@ struct vnode_ops {
 #define VOP_IOCTL(vn, code, buf)        (__VOP(vn, ioctl)(vn,code,buf))
 #define VOP_STAT(vn, ptr) 	        (__VOP(vn, stat)(vn, ptr))
 #define VOP_GETTYPE(vn, result)         (__VOP(vn, gettype)(vn, result))
-#define VOP_ISSEEKABLE(vn)              (__VOP(vn, isseekable)(vn))
+#define VOP_TRYSEEK(vn, pos)            (__VOP(vn, tryseek)(vn, pos))
 #define VOP_FSYNC(vn)                   (__VOP(vn, fsync)(vn))
 #define VOP_MMAP(vn /*add stuff */)     (__VOP(vn, mmap)(vn /*add stuff */))
 #define VOP_TRUNCATE(vn, pos)           (__VOP(vn, truncate)(vn, pos))
@@ -267,11 +284,25 @@ void vnode_decref(struct vnode *);
 #define VOP_DECREF(vn) 			vnode_decref(vn)
 
 /*
+ * Open count manipulation (handled above filesystem level)
+ *
+ * VOP_INCOPEN is called by vfs_open. VOP_DECOPEN is called by vfs_close.
+ * Neither of these should need to be called from above the vfs layer.
+ */
+void vnode_incopen(struct vnode *);
+void vnode_decopen(struct vnode *);
+
+#define VOP_INCOPEN(vn) 		vnode_incopen(vn)
+#define VOP_DECOPEN(vn) 		vnode_decopen(vn)
+
+/*
  * Vnode initialization (intended for use by filesystem code)
  * The reference count is initialized to 1.
  */
 int vnode_init(struct vnode *, const struct vnode_ops *ops,
 	       struct fs *fs, void *fsdata);
+
+#define VOP_INIT(vn, ops, fs, data)     vnode_init(vn, ops, fs, data)
 
 /*
  * Vnode final cleanup (intended for use by filesystem code)
@@ -279,38 +310,7 @@ int vnode_init(struct vnode *, const struct vnode_ops *ops,
  */
 void vnode_cleanup(struct vnode *);
 
-/*
- * Common stubs for vnode functions that just fail, in various ways.
- */
-int vopfail_uio_notdir(struct vnode *vn, struct uio *uio);
-int vopfail_uio_isdir(struct vnode *vn, struct uio *uio);
-int vopfail_uio_inval(struct vnode *vn, struct uio *uio);
-int vopfail_uio_nosys(struct vnode *vn, struct uio *uio);
-int vopfail_mmap_isdir(struct vnode *vn /* add stuff */);
-int vopfail_mmap_perm(struct vnode *vn /* add stuff */);
-int vopfail_mmap_nosys(struct vnode *vn /* add stuff */);
-int vopfail_truncate_isdir(struct vnode *vn, off_t pos);
-int vopfail_creat_notdir(struct vnode *vn, const char *name, bool excl,
-			 mode_t mode, struct vnode **result);
-int vopfail_symlink_notdir(struct vnode *vn, const char *contents,
-			   const char *name);
-int vopfail_symlink_nosys(struct vnode *vn, const char *contents,
-			  const char *name);
-int vopfail_mkdir_notdir(struct vnode *vn, const char *name, mode_t mode);
-int vopfail_mkdir_nosys(struct vnode *vn, const char *name, mode_t mode);
-int vopfail_link_notdir(struct vnode *dir, const char *name,
-			struct vnode *file);
-int vopfail_link_nosys(struct vnode *dir, const char *name,
-		       struct vnode *file);
-int vopfail_string_notdir(struct vnode *vn, const char *name);
-int vopfail_string_nosys(struct vnode *vn, const char *name);
-int vopfail_rename_notdir(struct vnode *fromdir, const char *fromname,
-			  struct vnode *todir, const char *toname);
-int vopfail_rename_nosys(struct vnode *fromdir, const char *fromname,
-			 struct vnode *todir, const char *toname);
-int vopfail_lookup_notdir(struct vnode *vn, char *path, struct vnode **result);
-int vopfail_lookparent_notdir(struct vnode *vn, char *path,
-			      struct vnode **result, char *buf, size_t len);
+#define VOP_CLEANUP(vn)			vnode_cleanup(vn)
 
 
 #endif /* _VNODE_H_ */

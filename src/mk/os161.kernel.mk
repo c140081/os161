@@ -84,7 +84,7 @@ TAGS_HEADERS=\
 all: includelinks .WAIT $(KERNEL)
 
 #
-# Here's how we link the kernel.
+# Here's how we link the kernel. 
 #
 # vers.c/.o is generated on every build. It contains a numeric serial
 # number incremented every time newvers.sh is run.  These values are
@@ -101,7 +101,6 @@ $(KERNEL):
 	$(KTOP)/conf/newvers.sh $(CONFNAME)
 	$(CC) $(KCFLAGS) -c vers.c
 	$(LD) $(KLDFLAGS) $(OBJS) vers.o -o $(KERNEL)
-	@echo '*** This is $(CONFNAME) build #'`cat version`' ***'
 	$(SIZE) $(KERNEL)
 
 #
@@ -112,23 +111,9 @@ $(KERNEL):
 # the kernel they're the kernel's own include files -- and they will be
 # changing!
 #
-# Each source file's depend info gets dumped into its own .depend file
-# so the overall depend process parallelizes. Otherwise (assuming you
-# have a reasonably modern machine) this is the slowest part of the
-# kernel build.
-#
 depend:
 	$(MAKE) includelinks
-	rm -f .depend.* || true
-	$(MAKE) realdepend
-
-.for _S_ in $(ALLSRCS)
-DEPFILES+=.depend.$(_S_:T)
-.depend.$(_S_:T):
-	$(CC) $(KCFLAGS) -M $(_S_) > .depend.$(_S_:T)
-.endfor
-realdepend: $(DEPFILES)
-	cat $(DEPFILES) > .depend
+	$(CC) $(KCFLAGS) -M $(ALLSRCS) > .depend
 
 # our make does this implicitly
 #.-include ".depend"
@@ -162,10 +147,7 @@ includelinks:
 #
 clean:
 	rm -f *.o *.a tags $(KERNEL)
-	rm -rf includelinks
-	@ABSTOP=$$(readlink -f $(TOP))
-	rm -f $(OSTREE)/.src
-	rm -f $(TOP)/.root
+	rm -r includelinks
 
 distclean cleandir: clean
 	rm -f .depend
@@ -191,9 +173,6 @@ install:
 	cp $(KERNEL) $(OSTREE)/$(KERNEL)-$(CONFNAME)
 	-rm -f $(OSTREE)/$(KERNEL)
 	ln -s $(KERNEL)-$(CONFNAME) $(OSTREE)/$(KERNEL)
-	@ABSTOP=$$(readlink -f $(TOP))
-	ln -Tsf $(ABSTOP) $(OSTREE)/.src
-	ln -Tsf $(OSTREE) $(ABSTOP)/.root
 
 #
 # Run tags on all the sources and header files. This is probably not
@@ -206,7 +185,7 @@ tags:
 # This tells make that these rules are not files so it (hopefully)
 # won't become confused if files by those names appear.
 #
-.PHONY: all depend realdepend clean reconfig install tags
+.PHONY: all depend clean reconfig install tags
 
 #
 # Compilation rules.

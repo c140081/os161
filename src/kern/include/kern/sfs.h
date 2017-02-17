@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009, 2014
+ * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009
  *	The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,27 +40,24 @@
 #define SFS_BLOCKSIZE     512           /* size of our blocks */
 #define SFS_VOLNAME_SIZE  32            /* max length of volume name */
 #define SFS_NDIRECT       15            /* # of direct blocks in inode */
-#define SFS_NINDIRECT     1             /* # of indirect blocks in inode */
-#define SFS_NDINDIRECT    0             /* # of 2x indirect blocks in inode */
-#define SFS_NTINDIRECT    0             /* # of 3x indirect blocks in inode */
 #define SFS_DBPERIDB      128           /* # direct blks per indirect blk */
 #define SFS_NAMELEN       60            /* max length of filename */
-#define SFS_SUPER_BLOCK   0             /* block the superblock lives in */
-#define SFS_FREEMAP_START 2             /* 1st block of the freemap */
-#define SFS_NOINO         0             /* inode # for free dir entry */
-#define SFS_ROOTDIR_INO   1             /* loc'n of the root dir inode */
+#define SFS_SB_LOCATION    0            /* block the superblock lives in */
+#define SFS_ROOT_LOCATION  1            /* loc'n of the root dir inode */
+#define SFS_MAP_LOCATION   2            /* 1st block of the freemap */
+#define SFS_NOINO          0            /* inode # for free dir entry */
 
 /* Number of bits in a block */
-#define SFS_BITSPERBLOCK (SFS_BLOCKSIZE * CHAR_BIT)
+#define SFS_BLOCKBITS (SFS_BLOCKSIZE * CHAR_BIT)
 
 /* Utility macro */
 #define SFS_ROUNDUP(a,b)       ((((a)+(b)-1)/(b))*b)
 
-/* Size of free block bitmap (in bits) */
-#define SFS_FREEMAPBITS(nblocks) SFS_ROUNDUP(nblocks, SFS_BITSPERBLOCK)
+/* Size of bitmap (in bits) */
+#define SFS_BITMAPSIZE(nblocks) SFS_ROUNDUP(nblocks, SFS_BLOCKBITS)
 
-/* Size of free block bitmap (in blocks) */
-#define SFS_FREEMAPBLOCKS(nblocks)  (SFS_FREEMAPBITS(nblocks)/SFS_BITSPERBLOCK)
+/* Size of bitmap (in blocks) */
+#define SFS_BITBLOCKS(nblocks)  (SFS_BITMAPSIZE(nblocks)/SFS_BLOCKBITS)
 
 /* File types for sfi_type */
 #define SFS_TYPE_INVAL    0       /* Should not appear on disk */
@@ -70,17 +67,17 @@
 /*
  * On-disk superblock
  */
-struct sfs_superblock {
-	uint32_t sb_magic;		/* Magic number; should be SFS_MAGIC */
-	uint32_t sb_nblocks;			/* Number of blocks in fs */
-	char sb_volname[SFS_VOLNAME_SIZE];	/* Name of this volume */
-	uint32_t reserved[118];			/* unused, set to 0 */
+struct sfs_super {
+	uint32_t sp_magic;		/* Magic number, should be SFS_MAGIC */
+	uint32_t sp_nblocks;			/* Number of blocks in fs */
+	char sp_volname[SFS_VOLNAME_SIZE];	/* Name of this volume */
+	uint32_t reserved[118];
 };
 
 /*
  * On-disk inode
  */
-struct sfs_dinode {
+struct sfs_inode {
 	uint32_t sfi_size;			/* Size of this file (bytes) */
 	uint16_t sfi_type;			/* One of SFS_TYPE_* above */
 	uint16_t sfi_linkcount;			/* # hard links to this file */
@@ -92,7 +89,7 @@ struct sfs_dinode {
 /*
  * On-disk directory entry
  */
-struct sfs_direntry {
+struct sfs_dir {
 	uint32_t sfd_ino;			/* Inode number */
 	char sfd_name[SFS_NAMELEN];		/* Filename */
 };

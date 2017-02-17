@@ -40,9 +40,14 @@
 #include <mainbus.h>
 #include <syscall.h>
 
+#include <../../../include/current.h>
+#include <../../../include/thread.h>
+#include <../../../include/signal.h>
+#include <../../../include/types.h>
+#include <../../../include/vm.h>
 
-/* in exception-*.S */
-extern __DEAD void asm_usermode(struct trapframe *tf);
+/* in exception.S */
+extern void asm_usermode(struct trapframe *tf);
 
 /* called only from assembler, so not declared in a header */
 void mips_trap(struct trapframe *tf);
@@ -78,42 +83,50 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 	KASSERT(code < NTRAPCODES);
 	switch (code) {
 	    case EX_IRQ:
+	    	sig = SIGINT;
+	    	break;
 	    case EX_IBE:
+	    	sig = SIGBUS;
+	    	break;
 	    case EX_DBE:
+	    	sig = SIGBUS;
+	    	break;
 	    case EX_SYS:
 		/* should not be seen */
-		KASSERT(0);
-		sig = SIGABRT;
-		break;
+	    	KASSERT(0);
+	    	sig = SIGABRT;
+	    	break;
 	    case EX_MOD:
 	    case EX_TLBL:
 	    case EX_TLBS:
-		sig = SIGSEGV;
-		break;
+	    	sig = SIGSEGV;
+	    	break;
 	    case EX_ADEL:
 	    case EX_ADES:
-		sig = SIGBUS;
-		break;
+	    	sig = SIGBUS;
+	    	break;
 	    case EX_BP:
-		sig = SIGTRAP;
-		break;
+	    	sig = SIGTRAP;
+	    	break;
 	    case EX_RI:
-		sig = SIGILL;
-		break;
+	    	sig = SIGILL;
+	    	break;
 	    case EX_CPU:
-		sig = SIGSEGV;
-		break;
+	    	sig = SIGSEGV;
+	    	break;
 	    case EX_OVF:
-		sig = SIGFPE;
-		break;
+	    	sig = SIGFPE;
+	    	break;
 	}
 
 	/*
 	 * You will probably want to change this.
 	 */
+	sys__exit(0);
 
 	kprintf("Fatal user mode trap %u sig %d (%s, epc 0x%x, vaddr 0x%x)\n",
 		code, sig, trapcodenames[code], epc, vaddr);
+
 	panic("I don't know how to handle this\n");
 }
 
@@ -126,8 +139,7 @@ void
 mips_trap(struct trapframe *tf)
 {
 	uint32_t code;
-	/*bool isutlb; -- not used */
-	bool iskern;
+	bool isutlb, iskern;
 	int spl;
 
 	/* The trap frame is supposed to be 37 registers long. */
@@ -137,7 +149,7 @@ mips_trap(struct trapframe *tf)
 	 * Extract the exception code info from the register fields.
 	 */
 	code = (tf->tf_cause & CCA_CODE) >> CCA_CODESHIFT;
-	/*isutlb = (tf->tf_cause & CCA_UTLB) != 0;*/
+	isutlb = (tf->tf_cause & CCA_UTLB) != 0;
 	iskern = (tf->tf_status & CST_KUp) == 0;
 
 	KASSERT(code < NTRAPCODES);
@@ -218,7 +230,7 @@ mips_trap(struct trapframe *tf)
 		KASSERT(curthread->t_curspl == 0);
 		KASSERT(curthread->t_iplhigh_count == 0);
 
-		DEBUG(DB_SYSCALL, "syscall: #%d, args %x %x %x %x\n",
+		DEBUG(DB_SYSCALL, "syscall: #%d, args %x %x %x %x\n", 
 		      tf->tf_v0, tf->tf_a0, tf->tf_a1, tf->tf_a2, tf->tf_a3);
 
 		syscall(tf);
@@ -249,11 +261,11 @@ mips_trap(struct trapframe *tf)
 	case EX_IBE:
 	case EX_DBE:
 		/*
-		 * This means you loaded invalid TLB entries, or
-		 * touched invalid parts of the direct-mapped
+		 * This means you loaded invalid TLB entries, or 
+		 * touched invalid parts of the direct-mapped 
 		 * segments. These are serious kernel errors, so
 		 * panic.
-		 *
+		 * 
 		 * The MIPS won't even tell you what invalid address
 		 * caused the bus error.
 		 */
@@ -283,8 +295,8 @@ mips_trap(struct trapframe *tf)
 	 * set by copyin/copyout and related functions to signify that
 	 * the addresses they're accessing are userlevel-supplied and
 	 * not trustable. What we actually want to do is resume
-	 * execution at the function pointed to by badfaultfunc. That's
-	 * going to be "copyfail" (see copyinout.c), which longjmps
+	 * execution at the function pointed to by badfaultfunc. That's 
+	 * going to be "copyfail" (see copyinout.c), which longjmps 
 	 * back to copyin/copyout or wherever and returns EFAULT.
 	 *
 	 * Note that we do not just *call* this function, because that
@@ -309,7 +321,7 @@ mips_trap(struct trapframe *tf)
 
 	kprintf("panic: Fatal exception %u (%s) in kernel mode\n", code,
 		trapcodenames[code]);
-	kprintf("panic: EPC 0x%x, exception vaddr 0x%x\n",
+	kprintf("panic: EPC 0x%x, exception vaddr 0x%x\n", 
 		tf->tf_epc, tf->tf_vaddr);
 
 	panic("I can't handle this... I think I'll just die now...\n");
@@ -344,7 +356,10 @@ mips_trap(struct trapframe *tf)
 	 * kernel will (most likely) hang the system, so it's better
 	 * to find out now.
 	 */
-	KASSERT(SAME_STACK(cpustacks[curcpu->c_number]-1, (vaddr_t)tf));
+	//KASSERT(SAME_STACK(cpustacks[curcpu->c_number]-1, (vaddr_t)tf));
+	KASSERT(((vaddr_t)tf) >= ((vaddr_t)curthread->t_stack));
+	KASSERT(((vaddr_t)tf) < ((vaddr_t)curthread->t_stack+STACK_SIZE));
+
 }
 
 /*
@@ -398,7 +413,7 @@ mips_usermode(struct trapframe *tf)
 	KASSERT(SAME_STACK(cpustacks[curcpu->c_number]-1, (vaddr_t)tf));
 
 	/*
-	 * This actually does it. See exception-*.S.
+	 * This actually does it. See exception.S.
 	 */
 	asm_usermode(tf);
 }
@@ -408,20 +423,15 @@ mips_usermode(struct trapframe *tf)
  *
  * Performs the necessary initialization so that the user program will
  * get the arguments supplied in argc/argv (note that argv must be a
- * user-level address) and the environment pointer env (ditto), and
- * begin executing at the specified entry point. The stack pointer is
- * initialized from the stackptr argument. Note that passing argc/argv
- * may use additional stack space on some other platforms (but not on
- * mips).
- *
- * Unless you implement execve() that passes environments around, just
- * pass NULL for the environment.
+ * user-level address), and begin executing at the specified entry
+ * point. The stack pointer is initialized from the stackptr
+ * argument. Note that passing argc/argv may use additional stack
+ * space on some other platforms (but not on mips).
  *
  * Works by creating an ersatz trapframe.
  */
 void
-enter_new_process(int argc, userptr_t argv, userptr_t env,
-		  vaddr_t stack, vaddr_t entry)
+enter_new_process(int argc, userptr_t argv, vaddr_t stack, vaddr_t entry)
 {
 	struct trapframe tf;
 
@@ -431,7 +441,6 @@ enter_new_process(int argc, userptr_t argv, userptr_t env,
 	tf.tf_epc = entry;
 	tf.tf_a0 = argc;
 	tf.tf_a1 = (vaddr_t)argv;
-	tf.tf_a2 = (vaddr_t)env;
 	tf.tf_sp = stack;
 
 	mips_usermode(&tf);

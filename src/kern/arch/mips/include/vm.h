@@ -53,7 +53,7 @@
 #define MIPS_KSEG1  0xa0000000
 #define MIPS_KSEG2  0xc0000000
 
-/*
+/* 
  * The first 512 megs of physical space can be addressed in both kseg0 and
  * kseg1. We use kseg0 for the kernel. This macro returns the kernel virtual
  * address of a given physical address within that range. (We assume we're
@@ -61,11 +61,13 @@
  *
  * N.B. If you, say, call a function that returns a paddr or 0 on error,
  * check the paddr for being 0 *before* you use this macro. While paddr 0
- * is not legal for memory allocation or memory management (it holds
+ * is not legal for memory allocation or memory management (it holds 
  * exception handler code) when converted to a vaddr it's *not* NULL, *is*
  * a valid address, and will make a *huge* mess if you scribble on it.
  */
 #define PADDR_TO_KVADDR(paddr) ((paddr)+MIPS_KSEG0)
+#define PADDR_TO_UVADDR(paddr) ((paddr)+0x00400000)
+#define UVADDR_TO_PADDR(uvaddr) ((uvaddr)-0x00400000)
 
 /*
  * The top of user space. (Actually, the address immediately above the
@@ -87,18 +89,11 @@
  * Interface to the low-level module that looks after the amount of
  * physical memory we have.
  *
- * ram_getsize returns one past the highest valid physical
- * address. (This value is page-aligned.)  The extant RAM ranges from
- * physical address 0 up to but not including this address.
- *
- * ram_getfirstfree returns the lowest valid physical address. (It is
- * also page-aligned.) Memory at this address and above is available
- * for use during operation, and excludes the space the kernel is
- * loaded into and memory that is grabbed in the very early stages of
- * bootup. Memory below this address is already in use and should be
- * reserved or otherwise not managed by the VM system. It should be
- * called exactly once when the VM system initializes to take over
- * management of physical memory.
+ * ram_getsize returns the lowest valid physical address, and one past
+ * the highest valid physical address. (Both are page-aligned.) This
+ * is the memory that is available for use during operation, and
+ * excludes the memory the kernel is loaded into and memory that is
+ * grabbed in the very early stages of bootup.
  *
  * ram_stealmem can be used before ram_getsize is called to allocate
  * memory that cannot be freed later. This is intended for use early
@@ -107,8 +102,7 @@
 
 void ram_bootstrap(void);
 paddr_t ram_stealmem(unsigned long npages);
-paddr_t ram_getsize(void);
-paddr_t ram_getfirstfree(void);
+void ram_getsize(paddr_t *lo, paddr_t *hi);
 
 /*
  * TLB shootdown bits.
@@ -120,7 +114,8 @@ struct tlbshootdown {
 	/*
 	 * Change this to what you need for your VM design.
 	 */
-	int ts_placeholder;
+	struct addrspace *ts_addrspace;
+	vaddr_t ts_vaddr;
 };
 
 #define TLBSHOOTDOWN_MAX 16

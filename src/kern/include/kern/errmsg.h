@@ -35,13 +35,13 @@
  * This table must agree with kern/errno.h.
  *
  * Note that since this actually defines sys_errlist and sys_nerrlist, it
- * should only be included in one file. For the kernel, that file is
+ * should only be included in one file. For the kernel, that file is 
  * lib/misc.c; for userland it's lib/libc/strerror.c.
  */
 const char *const sys_errlist[] = {
 	"Operation succeeded",        /* 0 */
-	"Function not implemented",   /* ENOSYS */
-	"(undefined error 2)",        /* unused */
+	"No such system call",        /* ENOSYS */
+	"Unimplemented feature",      /* EUNIMP */
 	"Out of memory",              /* ENOMEM */
 	"Operation would block",      /* EAGAIN (also EWOULDBLOCK) */
 	"Interrupted system call",    /* EINTR */

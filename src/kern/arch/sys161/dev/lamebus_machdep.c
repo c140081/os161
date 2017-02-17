@@ -30,14 +30,12 @@
 #include <types.h>
 #include <kern/unistd.h>
 #include <lib.h>
-#include <mips/specialreg.h>
 #include <mips/trapframe.h>
 #include <cpu.h>
 #include <spl.h>
 #include <clock.h>
 #include <thread.h>
 #include <current.h>
-#include <membar.h>
 #include <synch.h>
 #include <mainbus.h>
 #include <sys161/bus.h>
@@ -151,15 +149,7 @@ lamebus_map_area(struct lamebus_softc *bus, int slot, uint32_t offset)
 uint32_t
 lamebus_read_register(struct lamebus_softc *bus, int slot, uint32_t offset)
 {
-	uint32_t *ptr;
-
-	ptr = lamebus_map_area(bus, slot, offset);
-
-	/*
-	 * Make sure the load happens after anything the device has
-	 * been doing.
-	 */
-	membar_load_load();
+	uint32_t *ptr = lamebus_map_area(bus, slot, offset);
 
 	return *ptr;
 }
@@ -171,16 +161,9 @@ void
 lamebus_write_register(struct lamebus_softc *bus, int slot,
 		       uint32_t offset, uint32_t val)
 {
-	uint32_t *ptr;
+	uint32_t *ptr = lamebus_map_area(bus, slot, offset);
 
-	ptr = lamebus_map_area(bus, slot, offset);
 	*ptr = val;
-
-	/*
-	 * Make sure the store happens before we do anything else to
-	 * the device.
-	 */
-	membar_store_store();
 }
 
 
@@ -247,23 +230,7 @@ mainbus_panic(void)
 uint32_t
 mainbus_ramsize(void)
 {
-	uint32_t ramsize;
-
-	ramsize = lamebus_ramsize();
-
-	/*
-	 * This is the same as the last physical address, as long as
-	 * we have less than 508 megabytes of memory. The LAMEbus I/O
-	 * area occupies the space between 508 megabytes and 512
-	 * megabytes, so if we had more RAM than this it would have to
-	 * be discontiguous. This is not a case we are going to worry
-	 * about.
-	 */
-	if (ramsize > 508*1024*1024) {
-		ramsize = 508*1024*1024;
-	}
-
-	return ramsize;
+	return lamebus_ramsize();
 }
 
 /*
@@ -288,7 +255,6 @@ void
 mainbus_interrupt(struct trapframe *tf)
 {
 	uint32_t cause;
-	bool seen = false;
 
 	/* interrupts should be off */
 	KASSERT(curthread->t_curspl > 0);
@@ -296,39 +262,18 @@ mainbus_interrupt(struct trapframe *tf)
 	cause = tf->tf_cause;
 	if (cause & LAMEBUS_IRQ_BIT) {
 		lamebus_interrupt(lamebus);
-		seen = true;
 	}
-	if (cause & LAMEBUS_IPI_BIT) {
+	else if (cause & LAMEBUS_IPI_BIT) {
 		interprocessor_interrupt();
 		lamebus_clear_ipi(lamebus, curcpu);
-		seen = true;
 	}
-	if (cause & MIPS_TIMER_BIT) {
+	else if (cause & MIPS_TIMER_BIT) {
 		/* Reset the timer (this clears the interrupt) */
 		mips_timer_set(CPU_FREQUENCY / HZ);
 		/* and call hardclock */
 		hardclock();
-		seen = true;
 	}
-
-	if (!seen) {
-		if ((cause & CCA_IRQS) == 0) {
-			/*
-			 * Don't panic here; this can happen if an
-			 * interrupt line asserts (very) briefly and
-			 * turns off again before we get as far as
-			 * reading the cause register.  This was
-			 * actually seen... once.
-			 */
-		}
-		else {
-			/*
-			 * But if we get an interrupt on an interrupt
-			 * line that's not supposed to be wired up,
-			 * complain.
-			 */
-			panic("Unknown interrupt; cause register is %08x\n",
-			      cause);
-		}
+	else {
+		panic("Unknown interrupt; cause register is %08x\n", cause);
 	}
 }

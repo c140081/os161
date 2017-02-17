@@ -38,18 +38,18 @@
 int
 sys___time(userptr_t user_seconds_ptr, userptr_t user_nanoseconds_ptr)
 {
-	struct timespec ts;
+	time_t seconds;
+	uint32_t nanoseconds;
 	int result;
 
-	gettime(&ts);
+	gettime(&seconds, &nanoseconds);
 
-	result = copyout(&ts.tv_sec, user_seconds_ptr, sizeof(ts.tv_sec));
+	result = copyout(&seconds, user_seconds_ptr, sizeof(time_t));
 	if (result) {
 		return result;
 	}
 
-	result = copyout(&ts.tv_nsec, user_nanoseconds_ptr,
-			 sizeof(ts.tv_nsec));
+	result = copyout(&nanoseconds, user_nanoseconds_ptr, sizeof(uint32_t));
 	if (result) {
 		return result;
 	}

@@ -35,8 +35,7 @@ MKDIRS+=$(OSTREE)$(BINDIR)
 
 # Default rule: create the program.
 # (In make the first rule found is the default.)
-all: all-local
-all-local: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(PROG)
+all: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(PROG)
 
 # Now get rules to compile the SRCS.
 .include "$(TOP)/mk/os161.compile.mk"
@@ -44,7 +43,7 @@ all-local: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(PROG)
 # Further rules for programs.
 
 # Clean: delete extraneous files.
-clean-local: cleanprog
+clean: cleanprog
 cleanprog:
 	rm -f $(MYBUILDDIR)/$(PROG)
 
@@ -58,16 +57,16 @@ cleanprog:
 # Note that we make a hard link instead of a copy by default to reduce
 # overhead.
 #
-install-staging-local: $(INSTALLTOP)$(BINDIR) .WAIT $(INSTALLTOP)$(BINDIR)/$(PROG)
+install-staging: $(INSTALLTOP)$(BINDIR) .WAIT $(INSTALLTOP)$(BINDIR)/$(PROG)
 $(INSTALLTOP)$(BINDIR)/$(PROG): $(MYBUILDDIR)/$(PROG)
 	rm -f $(.TARGET)
-	ln $(MYBUILDDIR)/$(PROG) $(.TARGET) >/dev/null 2>&1 || \
+	ln $(MYBUILDDIR)/$(PROG) $(.TARGET) || \
 	  cp $(MYBUILDDIR)/$(PROG) $(.TARGET)
 
-install-local: install-prog
+install: install-prog
 install-prog: $(OSTREE)$(BINDIR) $(MYBUILDDIR)/$(PROG)
 	rm -f $(OSTREE)$(BINDIR)/$(PROG)
-	ln $(MYBUILDDIR)/$(PROG) $(OSTREE)$(BINDIR)/$(PROG) >/dev/null 2>&1 || \
+	ln $(MYBUILDDIR)/$(PROG) $(OSTREE)$(BINDIR)/$(PROG) || \
 	  cp $(MYBUILDDIR)/$(PROG) $(OSTREE)$(BINDIR)/$(PROG)
 
 # Link the program.
@@ -76,8 +75,7 @@ $(MYBUILDDIR)/$(PROG): $(OBJS) $(LIBDEPS)
 
 # Mark targets that don't represent files PHONY, to prevent various
 # lossage if files by those names appear.
-.PHONY: all all-local clean cleanprog install-staging-local
-.PHONY: install-local install-prog
+.PHONY: all clean cleanprog install-staging install install-prog
 
 # Finally, get the shared definitions for the most basic rules.
 .include "$(TOP)/mk/os161.baserules.mk"

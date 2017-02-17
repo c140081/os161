@@ -55,8 +55,8 @@
  * the structure directly but always use the spinlock API functions.
  */
 struct spinlock {
-	volatile spinlock_data_t splk_lock; /* Memory word where we spin. */
-	struct cpu *splk_holder;	    /* CPU holding this lock. */
+	volatile spinlock_data_t lk_lock; /* The memory word where we spin. */
+	struct cpu *lk_holder;		/* CPU holding this lock. */
 };
 
 /*

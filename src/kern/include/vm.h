@@ -35,7 +35,32 @@
  *
  * You'll probably want to add stuff here.
  */
+paddr_t getppages(unsigned long npages);
+int corefree(void);
 
+//typedef enum {
+//	freed,
+//	dirty,
+//	fixed,
+//	clean
+//} page_state_t;
+
+struct page {
+    /* where is paged mapped to */
+    struct addrspace* as;
+    vaddr_t va;
+    paddr_t pa;
+    int partofpage;// will be used for de-allocation of pages
+    bool contained;
+    /* page state */
+//    page_state_t state;
+    int state;
+
+    /* for paging algorithm
+     * I use FIFO paging, so a timestamp will be suffice
+     */
+    uint64_t timestamp;
+};
 
 #include <machine/vm.h>
 
@@ -52,15 +77,11 @@ void vm_bootstrap(void);
 int vm_fault(int faulttype, vaddr_t faultaddress);
 
 /* Allocate/free kernel heap pages (called by kmalloc/kfree) */
-vaddr_t alloc_kpages(unsigned npages);
+vaddr_t alloc_kpages(int npages);
 void free_kpages(vaddr_t addr);
 
-/*
- * Return amount of memory (in bytes) used by allocated coremap pages.  If
- * there are ongoing allocations, this value could change after it is returned
- * to the caller. But it should have been correct at some point in time.
- */
-unsigned int coremap_used_bytes(void);
+paddr_t alloc_upages(int npages);
+void free_upages(vaddr_t addr);
 
 /* TLB shootdown handling called from interprocessor_interrupt */
 void vm_tlbshootdown_all(void);

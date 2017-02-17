@@ -40,6 +40,8 @@ struct lser_softc {
 	/* Initialized by lower-level attachment function */
 	void *ls_busdata;
 	uint32_t ls_buspos;
+	void (*ls_maskinterrupt)(void *busdata, uint32_t buspos);
+	void (*ls_unmaskinterrupt)(void *busdata, uint32_t buspos);
 
 	/* Initialized by higher-level attachment function */
 	void *ls_devdata;
@@ -52,6 +54,8 @@ void lser_irq(/*struct lser_softc*/ void *sc);
 
 /* Functions called by higher-level drivers */
 void lser_write(/*struct lser_softc*/ void *sc, int ch);
+void lser_startpolling(/*struct lser_softc*/ void *sc);
 void lser_writepolled(/*struct lser_softc*/ void *sc, int ch);
+void lser_endpolling(/*struct lser_softc*/ void *sc);
 
 #endif /* _LAMEBUS_LSER_H_ */

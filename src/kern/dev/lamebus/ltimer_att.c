@@ -38,13 +38,15 @@
 
 /* Lowest revision we support */
 #define LOW_VERSION   1
+/* Highest revision we support */
+#define HIGH_VERSION  1
 
 struct ltimer_softc *
 attach_ltimer_to_lamebus(int ltimerno, struct lamebus_softc *sc)
 {
 	struct ltimer_softc *lt;
 	int slot = lamebus_probe(sc, LB_VENDOR_CS161, LBCS161_TIMER,
-				 LOW_VERSION, NULL);
+				 LOW_VERSION, HIGH_VERSION);
 	if (slot < 0) {
 		/* No ltimer (or no additional ltimer) found */
 		return NULL;

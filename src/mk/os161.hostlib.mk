@@ -34,8 +34,7 @@ MKDIRS+=$(TOOLDIR)/hostlib
 
 # Default rule: create the program.
 # (In make the first rule found is the default.)
-all: all-local
-all-local: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_LIB_)
+all: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_LIB_)
 
 # Now get rules to compile the SRCS.
 .include "$(TOP)/mk/os161.hostcompile.mk"
@@ -53,13 +52,13 @@ all-local: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_LIB_)
 # Note that we make a hard link instead of a copy by default to reduce
 # overhead.
 #
-install-staging-local: $(TOOLDIR)/hostlib .WAIT $(TOOLDIR)/hostlib/$(_LIB_)
+install-staging: $(TOOLDIR)/hostlib .WAIT $(TOOLDIR)/hostlib/$(_LIB_)
 $(TOOLDIR)/hostlib/$(_LIB_): $(MYBUILDDIR)/$(_LIB_)
 	rm -f $(.TARGET)
-	ln $(MYBUILDDIR)/$(_LIB_) $(.TARGET) >/dev/null 2>&1 || \
+	ln $(MYBUILDDIR)/$(_LIB_) $(.TARGET) || \
 	  cp $(MYBUILDDIR)/$(_LIB_) $(.TARGET)
 
-install-local:
+install:
 	@echo "Nothing to manually install"
 
 # Build the library.
@@ -70,7 +69,7 @@ $(MYBUILDDIR)/$(_LIB_): $(HOST_OBJS)
 
 # Mark targets that don't represent files PHONY, to prevent various
 # lossage if files by those names appear.
-.PHONY: all all-local install-staging-local install-local
+.PHONY: all install-staging install
 
 # Finally, get the shared definitions for the most basic rules.
 .include "$(TOP)/mk/os161.baserules.mk"

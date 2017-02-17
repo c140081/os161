@@ -30,21 +30,21 @@
 /*
  * Sample/test code for running a user program.  You can use this for
  * reference when implementing the execv() system call. Remember though
- * that execv() needs to do more than runprogram() does.
+ * that execv() needs to do more than this function does.
  */
 
 #include <types.h>
 #include <kern/errno.h>
 #include <kern/fcntl.h>
 #include <lib.h>
-#include <proc.h>
+#include <thread.h>
 #include <current.h>
 #include <addrspace.h>
 #include <vm.h>
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
-
+#include <copyinout.h>
 /*
  * Load program "progname" and start running it in usermode.
  * Does not return except on error.
@@ -52,58 +52,119 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname)
+runprogram(char *progname, char **args)
 {
-	struct addrspace *as;
+	//kprintf("Currently free pages in coremap- (runprogram before) %d\n",corefree());
 	struct vnode *v;
 	vaddr_t entrypoint, stackptr;
-	int result;
+	int result,len;
+	int index=0;
 
-	/* Open the file. */
+	// Console Initialization
+	if(curthread->fdtable[0] == NULL) {
+		result = filetable_init();
+		if(result) {
+			kprintf("Runprogram- INIT failed\n");
+			return result;
+		}
+	}
+
+	while(args[index] != NULL) {
+		index++;
+	}
+	char ** allargs=(char**)kmalloc(sizeof(char*)*index);
+	index = 0;
+
+	//	 Open the file.
 	result = vfs_open(progname, O_RDONLY, 0, &v);
 	if (result) {
 		return result;
 	}
 
-	/* We should be a new process. */
-	KASSERT(proc_getas() == NULL);
+	// We should be a new thread.
+	KASSERT(curthread->t_addrspace == NULL);
 
-	/* Create a new address space. */
-	as = as_create();
-	if (as == NULL) {
+	//Create a new address space.
+	curthread->t_addrspace = as_create();
+	if (curthread->t_addrspace==NULL) {
 		vfs_close(v);
 		return ENOMEM;
 	}
 
-	/* Switch to it and activate it. */
-	proc_setas(as);
-	as_activate();
+	//Activate it.
+	as_activate(curthread->t_addrspace);
 
-	/* Load the executable. */
+
+	//Load the executable.
 	result = load_elf(v, &entrypoint);
 	if (result) {
-		/* p_addrspace will go away when curproc is destroyed */
+		//thread_exit destroys curthread->t_addrspace
 		vfs_close(v);
 		return result;
 	}
 
-	/* Done with the file now. */
+	//Done with the file now.
 	vfs_close(v);
 
-	/* Define the user stack in the address space */
-	result = as_define_stack(as, &stackptr);
+	// Define the user stack in the address space
+	result = as_define_stack(curthread->t_addrspace, &stackptr);
 	if (result) {
-		/* p_addrspace will go away when curproc is destroyed */
+		//thread_exit destroys curthread->t_addrspace
 		return result;
 	}
 
-	/* Warp to user mode. */
-	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-			  NULL /*userspace addr of environment*/,
-			  stackptr, entrypoint);
+	while(args[index] != NULL) {
+		char * arg;
+		len = strlen(args[index]) + 1; // +1 for Null terminator \0
 
-	/* enter_new_process does not return. */
+		int oglen = len;
+		if(len % 4 != 0) {
+			len = len + (4 - len % 4);
+		}
+
+		arg=kmalloc(sizeof(len));
+		arg= kstrdup(args[index]);
+
+		for(int i=0; i < len; i++) {
+
+			if(i>=oglen)
+				arg[i]= '\0';
+			else
+				arg[i]=args[index][i];
+		}
+
+		stackptr -= len;
+
+		result = copyout((const void *)arg, (userptr_t)stackptr, (size_t)len);
+		if(result) {
+			kprintf("RunProgram- copyout1 failed %d\n",result);
+			return result;
+		}
+
+		kfree(arg);
+		allargs[index]=(char *)stackptr;
+
+		index++;
+	}
+
+	if(args[index]==NULL){
+		stackptr -= 4 * sizeof(char);
+	}
+
+	for(int i=(index-1); i>= 0;i--) {
+		stackptr=stackptr-sizeof(char*);
+		result = copyout((const void *)(allargs+i), (userptr_t)stackptr, (sizeof(char *)));
+		if(result) {
+			kprintf("RunProgram- copyout2 failed, Result %d, Array Index %d\n",result, i);
+			return result;
+		}
+	}
+	//kprintf("Currently free pages in coremap- (runprogram after) %d\n",corefree());
+	//Warp to user mode.
+	enter_new_process(index /*argc*/, (userptr_t)stackptr /*userspace addr of argv*/,
+			stackptr, entrypoint);
+
+	//enter_new_process does not return.
 	panic("enter_new_process returned\n");
 	return EINVAL;
 }
-

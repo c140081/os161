@@ -35,7 +35,6 @@
 #include <threadlist.h>
 #include <machine/vm.h>  /* for TLBSHOOTDOWN_MAX */
 
-extern unsigned num_cpus;
 
 /*
  * Per-cpu structure
@@ -61,7 +60,6 @@ struct cpu {
 	struct thread *c_curthread;	/* Current thread on cpu */
 	struct threadlist c_zombies;	/* List of exited threads */
 	unsigned c_hardclocks;		/* Counter of hardclock() calls */
-	unsigned c_spinlocks;		/* Counter of spinlocks held */
 
 	/*
 	 * Accessed by other cpus.
@@ -95,7 +93,7 @@ struct cpu {
 
 /*
  * Initialization functions.
- *
+ * 
  * cpu_create creates a cpu; it is suitable for calling from driver-
  * or bus-specific code that looks for secondary CPUs.
  *
@@ -112,9 +110,9 @@ void cpu_machdep_init(struct cpu *);
 void cpu_hatch(unsigned software_number);
 
 /*
- * Produce a string describing the CPU type.
+ * Return a string describing the CPU type.
  */
-void cpu_identify(char *buf, size_t max);
+const char *cpu_identify(void);
 
 /*
  * Hardware-level interrupt on/off, for the current CPU.

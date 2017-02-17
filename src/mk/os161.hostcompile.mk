@@ -18,13 +18,13 @@ HOST_OBJS=
 # .ho is a host object.
 .SUFFIXES: .ho
 
-clean-local: cleanhostcompile
+clean: cleanhostcompile
 cleanhostcompile:
 	rm -f $(MYBUILDDIR)/*.ho $(MYBUILDDIR)/*.ha
 
-distclean-local: distcleanhostcompile
+distclean: distcleanhostcompile
 distcleanhostcompile:
-	rm -f $(MYBUILDDIR)/.hostdepend
+	rm -f .hostdepend
 
 #
 # Depend: generate dependency information.
@@ -34,24 +34,31 @@ distcleanhostcompile:
 # They would be host system headers and we don't want to get involved
 # with those.
 #
-# The fixdepends script transforms the results by substituting some
-# make variables back into them; this way the depend files are
-# independent of (at least some of) the build configuration. It also
-# changes .o files to .ho files so the host and native builds are
-# independent, and allows for placing the .ho files in the build
-# directory.
+# The awk scripts and the first sed invocation transform the results to
+# have one file per line.
+# 
+# The second sed command changes the .o filenames in gcc's output
+# to .ho names.
 #
-depend-local: $(MYBUILDDIR) .WAIT predepend .WAIT dependhostcompile
+# The third sed command replaces the value of $(INSTALLTOP) -- which
+# is some pathname -- with the string $(INSTALLTOP). This makes the
+# depend file independent of the value of $(INSTALLTOP).
+#
+# XXX: why the $p;$x? That seems like a no-op in this script... also,
+# this logic is extremely opaque and could be done a lot better...
+#
+depend: dependhostcompile
 dependhostcompile:
 	$(HOST_CC) $(HOST_CFLAGS) -DHOST -MM $(SRCS) |\
-		$(TOP)/mk/fixdepends.sh '$(INSTALLTOP)' host \
-		> $(MYBUILDDIR)/.hostdeptmp
-	mv -f $(MYBUILDDIR)/.hostdeptmp $(MYBUILDDIR)/.hostdepend
+	  awk '{x=$$0~"^ ";for(i=1;i<=NF;i++){printf "%d %s\n",x,$$i;x=1; }}'|\
+	  sed '/1 \\/d' | awk '{ printf "%s%s", $$1?" \\\n ":"\n", $$2 }' |\
+	  sed 's/\.o/\.ho/' |\
+	  sed 's|$(INSTALLTOP)|$$(INSTALLTOP)|;$$p;$$x' |\
+          sed 's|^\([^ ]\)|$$(MYBUILDDIR)/\1|' > .deptmp
+	mv -f .deptmp .depend
 
-.-include "$(MYBUILDDIR)/.hostdepend"
-
-predepend:
-.PHONY: predepend
+# We do need to explicitly include .hostdepend, unlike .depend.
+.-include ".hostdepend"
 
 # No tags for host programs.
 tags: tagshostcompile
@@ -69,7 +76,7 @@ $(MYBUILDDIR)/$(_S_:T:R).ho: $(_S_)
 .endfor
 
 # Make non-file rules PHONY.
-.PHONY: clean-local cleanhostcompile distclean-local distcleanhostcompile
-.PHONY: depend-local dependhostcompile tags tagshostcompile
+.PHONY: clean cleanhostcompile distclean distcleanhostcompile 
+.PHONY: depend dependhostcompile tags tagshostcompile
 
 # End.

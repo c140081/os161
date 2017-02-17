@@ -50,9 +50,9 @@ struct iovec {
 	 *
 	 * Note that to work properly (without extra unwanted fiddling
 	 * around) this scheme requires that void* and userptr_t have
-	 * the same machine representation. Machines where this isn't
-	 * true are theoretically possible under the C standard, but
-	 * do not exist in practice.
+	 * the same machine representation. This is theoretically
+	 * possible under the C standard, but such machines do not
+	 * exist in practice.
 	 */
 #ifdef _KERNEL
         union {

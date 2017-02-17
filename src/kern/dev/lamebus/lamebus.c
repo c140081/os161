@@ -34,7 +34,6 @@
 #include <types.h>
 #include <lib.h>
 #include <cpu.h>
-#include <membar.h>
 #include <spinlock.h>
 #include <current.h>
 #include <lamebus/lamebus.h>
@@ -127,21 +126,9 @@ write_ctlcpu_register(struct lamebus_softc *lb, unsigned hw_cpunum,
 void
 lamebus_find_cpus(struct lamebus_softc *lamebus)
 {
-	uint32_t mainboard_vid, mainboard_did;
 	uint32_t cpumask, self, bit, val;
 	unsigned i, numcpus, bootcpu;
 	unsigned hwnum[32];
-
-	mainboard_vid = read_cfg_register(lamebus, LB_CONTROLLER_SLOT,
-					  CFGREG_VID);
-	mainboard_did = read_cfg_register(lamebus, LB_CONTROLLER_SLOT,
-					  CFGREG_DID);
-	if (mainboard_vid == LB_VENDOR_CS161 &&
-	    mainboard_did == LBCS161_UPBUSCTL) {
-		/* Old uniprocessor mainboard; no cpu registers. */
-		lamebus->ls_uniprocessor = 1;
-		return;
-	}
 
 	cpumask = read_ctl_register(lamebus, CTLREG_CPUS);
 	self = read_ctl_register(lamebus, CTLREG_SELF);
@@ -202,10 +189,6 @@ lamebus_start_cpus(struct lamebus_softc *lamebus)
 	unsigned i;
 	unsigned cpunum;
 
-	if (lamebus->ls_uniprocessor) {
-		return;
-	}
-
 	cpumask = read_ctl_register(lamebus, CTLREG_CPUS);
 	self = read_ctl_register(lamebus, CTLREG_SELF);
 
@@ -225,8 +208,6 @@ lamebus_start_cpus(struct lamebus_softc *lamebus)
 			cram[1] = cpunum++;
 		}
 	}
-	/* Ensure all the above writes get flushed. */
-	membar_store_store();
 
 	/* Now, enable them all. */
 	write_ctl_register(lamebus, CTLREG_CPUE, cpumask);
@@ -236,21 +217,17 @@ lamebus_start_cpus(struct lamebus_softc *lamebus)
  * Probe function.
  *
  * Given a LAMEbus, look for a device that's not already been marked
- * in use, has the specified IDs, and has a device revision level at
- * least as high as the minimum specified.
+ * in use, has the specified IDs, and has a device revision level in
+ * the specified range (which is inclusive on both ends.)
  *
  * Returns the slot number found (0-31) or -1 if nothing suitable was
  * found.
- *
- * If VERSION_RET is not null, return the device version found. This
- * allows drivers to blacklist specific versions or otherwise conduct
- * more specific checks.
  */
 
 int
 lamebus_probe(struct lamebus_softc *sc,
 	      uint32_t vendorid, uint32_t deviceid,
-	      uint32_t lowver, uint32_t *version_ret)
+	      uint32_t lowver, uint32_t highver)
 {
 	int slot;
 	uint32_t val;
@@ -281,12 +258,9 @@ lamebus_probe(struct lamebus_softc *sc,
 		}
 
 		val = read_cfg_register(sc, slot, CFGREG_DRL);
-		if (val < lowver) {
+		if (val < lowver || val > highver) {
 			/* Unsupported device revision */
 			continue;
-		}
-		if (version_ret != NULL) {
-			*version_ret = val;
 		}
 
 		/* Found something */
@@ -367,7 +341,7 @@ lamebus_attach_interrupt(struct lamebus_softc *sc, int slot,
 
 	sc->ls_devdata[slot] = devdata;
 	sc->ls_irqfuncs[slot] = irqfunc;
-
+	
 	spinlock_release(&sc->ls_lock);
 }
 
@@ -392,7 +366,7 @@ lamebus_detach_interrupt(struct lamebus_softc *sc, int slot)
 
 	sc->ls_devdata[slot] = NULL;
 	sc->ls_irqfuncs[slot] = NULL;
-
+	
 	spinlock_release(&sc->ls_lock);
 }
 
@@ -439,7 +413,7 @@ lamebus_interrupt(struct lamebus_softc *lamebus)
 	 * slots to find the first interrupting device and call its
 	 * interrupt routine, no matter what that device is.
 	 *
-	 * Note that the entire LAMEbus uses only one on-cpu interrupt line.
+	 * Note that the entire LAMEbus uses only one on-cpu interrupt line. 
 	 * Thus, we do not use any on-cpu interrupt priority system either.
 	 */
 
@@ -501,7 +475,7 @@ lamebus_interrupt(struct lamebus_softc *lamebus)
 		/*
 		 * This slot is signalling an interrupt.
 		 */
-
+			
 		if ((lamebus->ls_slotsinuse & mask)==0) {
 			/*
 			 * No device driver is using this slot.
@@ -552,7 +526,7 @@ lamebus_interrupt(struct lamebus_softc *lamebus)
 	 * the system will make no progress. But we don't know how to
 	 * do that if there's no driver or no interrupt handler.
 	 *
-	 * So, if we get too many dud interrupts, panic, since it's
+	 * So, if we get too many dud interrupts, panic, since it's 
 	 * better to panic and reset than to hang.
 	 *
 	 * If we get through here without seeing any duds this time,
@@ -614,9 +588,6 @@ lamebus_ramsize(void)
 void
 lamebus_assert_ipi(struct lamebus_softc *lamebus, struct cpu *target)
 {
-	if (lamebus->ls_uniprocessor) {
-		return;
-	}
 	write_ctlcpu_register(lamebus, target->c_hardware_number,
 			      CTLCPU_CIPI, 1);
 }
@@ -624,9 +595,6 @@ lamebus_assert_ipi(struct lamebus_softc *lamebus, struct cpu *target)
 void
 lamebus_clear_ipi(struct lamebus_softc *lamebus, struct cpu *target)
 {
-	if (lamebus->ls_uniprocessor) {
-		return;
-	}
 	write_ctlcpu_register(lamebus, target->c_hardware_number,
 			      CTLCPU_CIPI, 0);
 }
@@ -658,8 +626,6 @@ lamebus_init(void)
 		lamebus->ls_devdata[i] = NULL;
 		lamebus->ls_irqfuncs[i] = NULL;
 	}
-
-	lamebus->ls_uniprocessor = 0;
 
 	return lamebus;
 }

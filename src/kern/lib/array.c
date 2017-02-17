@@ -76,7 +76,7 @@ array_cleanup(struct array *a)
 }
 
 int
-array_preallocate(struct array *a, unsigned num)
+array_setsize(struct array *a, unsigned num)
 {
 	void **newptr;
 	unsigned newmax;
@@ -103,18 +103,6 @@ array_preallocate(struct array *a, unsigned num)
 		kfree(a->v);
 		a->v = newptr;
 		a->max = newmax;
-	}
-	return 0;
-}
-
-int
-array_setsize(struct array *a, unsigned num)
-{
-	int result;
-
-	result = array_preallocate(a, num);
-	if (result) {
-		return result;
 	}
 	a->num = num;
 

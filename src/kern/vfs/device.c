@@ -50,7 +50,7 @@
  */
 static
 int
-dev_eachopen(struct vnode *v, int flags)
+dev_open(struct vnode *v, int flags)
 {
 	struct device *d = v->vn_data;
 
@@ -58,7 +58,19 @@ dev_eachopen(struct vnode *v, int flags)
 		return EINVAL;
 	}
 
-	return DEVOP_EACHOPEN(d, flags);
+	return d->d_open(d, flags);
+}
+
+/*
+ * Called on the last close().
+ * Just pass through.
+ */
+static
+int
+dev_close(struct vnode *v)
+{
+	struct device *d = v->vn_data;
+	return d->d_close(d);
 }
 
 /*
@@ -75,68 +87,40 @@ dev_reclaim(struct vnode *v)
 }
 
 /*
- * Check a seek position.
- *
- * For block devices, require block alignment.
- * For character devices, we should prohibit seeking entirely, but
- * for the moment we need to accept any position. (XXX)
- */
-static
-int
-dev_tryseek(struct device *d, off_t pos)
-{
-	if (d->d_blocks > 0) {
-		if ((pos % d->d_blocksize)!=0) {
-			/* not block-aligned */
-			return EINVAL;
-		}
-		if (pos / d->d_blocksize >= d->d_blocks) {
-			/* off the end */
-			return EINVAL;
-		}
-	}
-	else {
-		//return ESPIPE;
-	}
-	return 0;
-}
-
-/*
- * Called for read. Hand off to DEVOP_IO.
+ * Called for read. Hand off to d_io.
  */
 static
 int
 dev_read(struct vnode *v, struct uio *uio)
 {
 	struct device *d = v->vn_data;
-	int result;
-
-	result = dev_tryseek(d, uio->uio_offset);
-	if (result) {
-		return result;
-	}
-
 	KASSERT(uio->uio_rw == UIO_READ);
-	return DEVOP_IO(d, uio);
+	return d->d_io(d, uio);
 }
 
 /*
- * Called for write. Hand off to DEVOP_IO.
+ * Used for several functions with the same type signature that are
+ * not meaningful on devices.
+ */
+static
+int
+null_io(struct vnode *v, struct uio *uio)
+{
+	(void)v;
+	(void)uio;
+	return EINVAL;
+}
+
+/*
+ * Called for write. Hand off to d_io.
  */
 static
 int
 dev_write(struct vnode *v, struct uio *uio)
 {
 	struct device *d = v->vn_data;
-	int result;
-
-	result = dev_tryseek(d, uio->uio_offset);
-	if (result) {
-		return result;
-	}
-
 	KASSERT(uio->uio_rw == UIO_WRITE);
-	return DEVOP_IO(d, uio);
+	return d->d_io(d, uio);
 }
 
 /*
@@ -147,7 +131,7 @@ int
 dev_ioctl(struct vnode *v, int op, userptr_t data)
 {
 	struct device *d = v->vn_data;
-	return DEVOP_IOCTL(d, op, data);
+	return d->d_ioctl(d, op, data);
 }
 
 /*
@@ -211,18 +195,38 @@ dev_gettype(struct vnode *v, mode_t *ret)
 }
 
 /*
- * Check if seeking is allowed.
+ * Attempt a seek.
+ * For block devices, require block alignment.
+ * For character devices, prohibit seeking entirely.
  */
 static
-bool
-dev_isseekable(struct vnode *v)
+int
+dev_tryseek(struct vnode *v, off_t pos)
 {
 	struct device *d = v->vn_data;
-
-	if (d->d_blocks == 0) {
-		return false;
+	if (d->d_blocks > 0) {
+		if ((pos % d->d_blocksize)!=0) {
+			/* not block-aligned */
+			return EINVAL;
+		}
+		if (pos < 0) {
+			/* 
+			 * Nonsensical.
+			 * (note: off_t must be signed for SEEK_CUR or
+			 * SEEK_END seeks to work, so this case must
+			 * be checked.)
+			 */
+			return EINVAL;
+		}
+		if (pos / d->d_blocksize >= d->d_blocks) {
+			/* off the end */
+			return EINVAL;
+		}
 	}
-	return true;
+	else {
+		return ESPIPE;
+	}
+	return 0;
 }
 
 /*
@@ -245,11 +249,11 @@ int
 dev_mmap(struct vnode *v  /* add stuff as needed */)
 {
 	(void)v;
-	return ENOSYS;
+	return EUNIMP;
 }
 
 /*
- * For ftruncate().
+ * For ftruncate(). 
  */
 static
 int
@@ -290,6 +294,74 @@ dev_namefile(struct vnode *v, struct uio *uio)
 }
 
 /*
+ * Operations that are completely meaningless on devices.
+ */
+
+static
+int
+null_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
+	   struct vnode **result)
+{
+	(void)v;
+	(void)name;
+	(void)excl;
+	(void)mode;
+	(void)result;
+	return ENOTDIR;
+}
+
+static
+int
+null_mkdir(struct vnode *v, const char *name, mode_t mode)
+{
+	(void)v;
+	(void)name;
+	(void)mode;
+	return ENOTDIR;
+}
+
+static
+int
+null_symlink(struct vnode *v, const char *contents, const char *name)
+{
+	(void)v;
+	(void)contents;
+	(void)name;
+	return ENOTDIR;
+}
+
+static
+int
+null_nameop(struct vnode *v, const char *name)
+{
+	(void)v;
+	(void)name;
+	return ENOTDIR;
+}
+
+static
+int
+null_link(struct vnode *v, const char *name, struct vnode *file)
+{
+	(void)v;
+	(void)name;
+	(void)file;
+	return ENOTDIR;
+}
+
+static
+int
+null_rename(struct vnode *v, const char *n1, struct vnode *v2, const char *n2)
+{
+	(void)v;
+	(void)n1;
+	(void)v2;
+	(void)n2;
+	return ENOTDIR;
+}
+
+
+/*
  * Name lookup.
  *
  * One interesting feature of device:name pathname syntax is that you
@@ -303,7 +375,7 @@ dev_namefile(struct vnode *v, struct uio *uio)
  */
 static
 int
-dev_lookup(struct vnode *dir,
+dev_lookup(struct vnode *dir, 
 	   char *pathname, struct vnode **result)
 {
 	/*
@@ -319,35 +391,54 @@ dev_lookup(struct vnode *dir,
 	return 0;
 }
 
+static
+int
+dev_lookparent(struct vnode *dir, 
+	       char *pathname, struct vnode **result,
+	       char *namebuf, size_t buflen)
+{
+	/*
+	 * This is always an error.
+	 */
+	(void)dir;
+	(void)pathname;
+	(void)result;
+	(void)namebuf;
+	(void)buflen;
+
+	return ENOTDIR;
+}
+
 /*
  * Function table for device vnodes.
  */
 static const struct vnode_ops dev_vnode_ops = {
-	.vop_magic = VOP_MAGIC,
+	VOP_MAGIC,
 
-	.vop_eachopen = dev_eachopen,
-	.vop_reclaim = dev_reclaim,
-	.vop_read = dev_read,
-	.vop_readlink = vopfail_uio_inval,
-	.vop_getdirentry = vopfail_uio_notdir,
-	.vop_write = dev_write,
-	.vop_ioctl = dev_ioctl,
-	.vop_stat = dev_stat,
-	.vop_gettype = dev_gettype,
-	.vop_isseekable = dev_isseekable,
-	.vop_fsync = null_fsync,
-	.vop_mmap = dev_mmap,
-	.vop_truncate = dev_truncate,
-	.vop_namefile = dev_namefile,
-	.vop_creat = vopfail_creat_notdir,
-	.vop_symlink = vopfail_symlink_notdir,
-	.vop_mkdir = vopfail_mkdir_notdir,
-	.vop_link = vopfail_link_notdir,
-	.vop_remove = vopfail_string_notdir,
-	.vop_rmdir = vopfail_string_notdir,
-	.vop_rename = vopfail_rename_notdir,
-	.vop_lookup = dev_lookup,
-	.vop_lookparent = vopfail_lookparent_notdir,
+	dev_open,
+	dev_close,
+	dev_reclaim,
+	dev_read,
+	null_io,      /* readlink */
+	null_io,      /* getdirentry */
+	dev_write,
+	dev_ioctl,
+	dev_stat,
+	dev_gettype,
+	dev_tryseek,
+	null_fsync,
+	dev_mmap,
+	dev_truncate,
+	dev_namefile,
+	null_creat,
+	null_symlink,
+	null_mkdir,
+	null_link,
+	null_nameop,  /* remove */
+	null_nameop,  /* rmdir */
+	null_rename,
+	dev_lookup,
+	dev_lookparent,
 };
 
 /*
@@ -364,25 +455,11 @@ dev_create_vnode(struct device *dev)
 		return NULL;
 	}
 
-	result = vnode_init(v, &dev_vnode_ops, NULL, dev);
+	result = VOP_INIT(v, &dev_vnode_ops, NULL, dev);
 	if (result != 0) {
-		panic("While creating vnode for device: vnode_init: %s\n",
+		panic("While creating vnode for device: VOP_INIT: %s\n",
 		      strerror(result));
 	}
 
 	return v;
-}
-
-/*
- * Undo dev_create_vnode.
- *
- * Note: this is only used in failure paths; we don't support
- * hotpluggable devices, so once a device is attached it's permanent.
- */
-void
-dev_uncreate_vnode(struct vnode *vn)
-{
-	KASSERT(vn->vn_ops == &dev_vnode_ops);
-	vnode_cleanup(vn);
-	kfree(vn);
 }

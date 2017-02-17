@@ -55,7 +55,7 @@ static struct random_softc *the_random = NULL;
  */
 static
 int
-randeachopen(struct device *dev, int openflags)
+randopen(struct device *dev, int openflags)
 {
 	(void)dev;
 
@@ -63,6 +63,17 @@ randeachopen(struct device *dev, int openflags)
 		return EIO;
 	}
 
+	return 0;
+}
+
+/*
+ * VFS close function.
+ */
+static
+int
+randclose(struct device *dev)
+{
+	(void)dev;
 	return 0;
 }
 
@@ -98,12 +109,6 @@ randioctl(struct device *dev, int op, userptr_t data)
 	return EIOCTL;
 }
 
-static const struct device_ops random_devops = {
-	.devop_eachopen = randeachopen,
-	.devop_io = randio,
-	.devop_ioctl = randioctl,
-};
-
 /*
  * Config function.
  */
@@ -120,7 +125,10 @@ config_random(struct random_softc *rs, int unit)
 	KASSERT(the_random==NULL);
 	the_random = rs;
 
-	rs->rs_dev.d_ops = &random_devops;
+	rs->rs_dev.d_open = randopen;
+	rs->rs_dev.d_close = randclose;
+	rs->rs_dev.d_io = randio;
+	rs->rs_dev.d_ioctl = randioctl;
 	rs->rs_dev.d_blocks = 0;
 	rs->rs_dev.d_blocksize = 1;
 	rs->rs_dev.d_data = rs;

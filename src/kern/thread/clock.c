@@ -40,7 +40,7 @@
  *
  * This is pretty primitive. A real kernel will typically have some
  * kind of support for scheduling callbacks to happen at specific
- * points in the future, usually with more resolution than one second.
+ * points in the future, usually with more resolution that one second.
  *
  * A real kernel also has to maintain the time of day; in OS/161 we
  * skimp on that because we have a known-good hardware clock.
@@ -57,7 +57,6 @@
  * Once a second, everything waiting on lbolt is awakened by CPU 0.
  */
 static struct wchan *lbolt;
-static struct spinlock lbolt_lock;
 
 /*
  * Setup.
@@ -65,7 +64,6 @@ static struct spinlock lbolt_lock;
 void
 hardclock_bootstrap(void)
 {
-	spinlock_init(&lbolt_lock);
 	lbolt = wchan_create("lbolt");
 	if (lbolt == NULL) {
 		panic("Couldn't create lbolt\n");
@@ -80,9 +78,7 @@ void
 timerclock(void)
 {
 	/* Just broadcast on lbolt */
-	spinlock_acquire(&lbolt_lock);
-	wchan_wakeall(lbolt, &lbolt_lock);
-	spinlock_release(&lbolt_lock);
+	wchan_wakeall(lbolt);
 }
 
 /*
@@ -97,11 +93,11 @@ hardclock(void)
 	 */
 
 	curcpu->c_hardclocks++;
-	if ((curcpu->c_hardclocks % MIGRATE_HARDCLOCKS) == 0) {
-		thread_consider_migration();
-	}
 	if ((curcpu->c_hardclocks % SCHEDULE_HARDCLOCKS) == 0) {
 		schedule();
+	}
+	if ((curcpu->c_hardclocks % MIGRATE_HARDCLOCKS) == 0) {
+		thread_consider_migration();
 	}
 	thread_yield();
 }
@@ -112,10 +108,9 @@ hardclock(void)
 void
 clocksleep(int num_secs)
 {
-	spinlock_acquire(&lbolt_lock);
 	while (num_secs > 0) {
-		wchan_sleep(lbolt, &lbolt_lock);
+		wchan_lock(lbolt);
+		wchan_sleep(lbolt);
 		num_secs--;
 	}
-	spinlock_release(&lbolt_lock);
 }

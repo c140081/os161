@@ -15,13 +15,13 @@
 # Objects list starts empty. It is added to below.
 OBJS=
 
-clean-local: cleancompile
+clean: cleancompile
 cleancompile:
 	rm -f $(MYBUILDDIR)/*.[oa]
 
-distclean-local: distcleancompile
+distclean: distcleancompile
 distcleancompile:
-	rm -f $(MYBUILDDIR)/.depend
+	rm -f .depend
 
 #
 # Depend: generate dependency information.
@@ -31,22 +31,27 @@ distcleancompile:
 # and program-local headers. This is because we *are* the system and
 # we might well change those system headers.
 #
-# The fixdepends script transforms the results by substituting some
-# make variables back into them; this way the depend files are
-# independent of (at least some of) the build configuration. It also
-# allows for placing the .o files in the build directory.
+# The awk scripts and the first sed invocation transform the results to
+# have one file per line.
+# 
+# The second sed command replaces the value of $(INSTALLTOP) -- which
+# is some pathname -- with the string $(INSTALLTOP). This makes the
+# depend file independent of the value of $(INSTALLTOP).
 #
-depend-local: $(MYBUILDDIR) .WAIT predepend .WAIT dependcompile
+# XXX: why the $p;$x? That seems like a no-op in this script... also,
+# this logic is extremely opaque and could be done a lot better...
+#
+depend: dependcompile
 dependcompile:
 	$(CC) $(CFLAGS) $(MORECFLAGS) -M $(SRCS) |\
-		$(TOP)/mk/fixdepends.sh '$(INSTALLTOP)' native \
-		> $(MYBUILDDIR)/.deptmp
-	mv -f $(MYBUILDDIR)/.deptmp $(MYBUILDDIR)/.depend
+	  awk '{x=$$0~"^ ";for(i=1;i<=NF;i++){printf "%d %s\n",x,$$i;x=1; }}'|\
+	  sed '/1 \\/d' | awk '{ printf "%s%s", $$1?" \\\n ":"\n", $$2 }' |\
+	  sed 's|$(INSTALLTOP)|$$(INSTALLTOP)|;$$p;$$x' |\
+          sed 's|^\([^ ]\)|$$(MYBUILDDIR)/\1|' > .deptmp
+	mv -f .deptmp .depend
 
-.-include "$(MYBUILDDIR)/.depend"
-
-predepend:
-.PHONY: predepend
+# We don't need to explicitly include .depend; our make does this on its own.
+#.-include ".depend"
 
 tags: tagscompile
 tagscompile:
@@ -69,7 +74,7 @@ $(_S_:T:R).o: $(MYBUILDDIR)/$(_S_:T:R).o
 .endfor
 
 # Make non-file rules PHONY.
-.PHONY: clean-local cleancompile distclean-local distcleancompile
-.PHONY: depend-local dependcompile tags tagscompile
+.PHONY: clean cleancompile distclean distcleancompile 
+.PHONY: depend dependcompile tags tagscompile
 
 # End.

@@ -13,47 +13,36 @@ _BASERULES_MK_=# empty
 
 
 #
-# Establish that all these (basic) rules exist and depend on the
-# local (non-subdir) version.
+# Establish that all these (basic) rules exist.
 #
-.for _T_ in all depend install install-staging clean distclean tags
-$(_T_): ;
-$(_T_): $(_T_)-local
-.PHONY: $(_T_) $(_T_)-local
-.endfor
+all depend install install-staging clean distclean tags: ;
 
 # distclean implies clean
-distclean: clean-local
+distclean: clean
 
+.PHONY: all depend install install-staging clean distclean tags
 
 #
 # Some other derived rules.
 #
 
 # cleandir is the same as distclean (cleandir is the old BSD name)
-cleandir: distclean-local
+cleandir: distclean
 
 # "stage" is a good short name for install-staging
-stage: install-staging-local
+stage: install-staging
 
-# dependall means depend then compile, but it's important to run a
-# new make after depending so the new depends take effect.
-dependall-local: depend-local
-	$(MAKE) all-local
-dependall: dependall-local
+# dependall means depend then compile
+dependall: depend .WAIT all
 
-# build means depend, compile, and install-staging; it also needs a
-# new make after depending. It could use the same one for compile
-# and install-staging, but that turns out to be awkward.
-build-local: dependall-local
-	$(MAKE) install-staging-local
-build: build-local
+# build means depend, compile, and install-staging
+build: dependall .WAIT install-staging
 
 # rebuild cleans first
-rebuild: clean-local .WAIT build-local
+rebuild: clean .WAIT build
 
 # fullrebuild does distclean
-fullrebuild: distclean-local .WAIT build-local
+fullrebuild: distclean .WAIT build
 
 # implement BUILDSYMLINKS
 .if "$(BUILDSYMLINKS)" == "yes"
@@ -69,7 +58,6 @@ remove-buildlink:
 .endif
 
 .PHONY: cleandir stage dependall build rebuild fullrebuild
-.PHONY: dependall-local build-local
 
 .endif # _BASERULES_MK_
 

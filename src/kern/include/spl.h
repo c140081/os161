@@ -32,11 +32,6 @@
 
 #include <cdefs.h>
 
-/* Inlining support - for making sure an out-of-line copy gets built */
-#ifndef SPL_INLINE
-#define SPL_INLINE INLINE
-#endif
-
 /*
  * Machine-independent interface to interrupt enable/disable.
  *
@@ -67,8 +62,8 @@
  * processor.
  */
 
-SPL_INLINE int spl0(void);
-SPL_INLINE int splhigh(void);
+int spl0(void);
+int splhigh(void);
 int splx(int);
 
 /*
@@ -90,6 +85,11 @@ void splraise(int oldipl, int newipl);
 void spllower(int oldipl, int newipl);
 
 ////////////////////////////////////////////////////////////
+
+/* Inlining support - for making sure an out-of-line copy gets built */
+#ifndef SPL_INLINE
+#define SPL_INLINE INLINE
+#endif
 
 SPL_INLINE
 int

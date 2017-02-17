@@ -46,7 +46,7 @@
 
 /*
  * Structure for a single named device.
- *
+ * 
  * kd_name    - Name of device (eg, "lhd0"). Should always be set to
  *              a valid string.
  *
@@ -58,7 +58,7 @@
  *              is hardwired.
  *
  * kd_fs      - Filesystem object mounted on, or associated with, this
- *              device. NULL if there is no filesystem.
+ *              device. NULL if there is no filesystem. 
  *
  * A filesystem can be associated with a device without having been
  * mounted if the device was created that way. In this case,
@@ -82,8 +82,8 @@ struct knowndev {
 	struct fs *kd_fs;
 };
 
-DECLARRAY(knowndev, static __UNUSED inline);
-DEFARRAY(knowndev, static __UNUSED inline);
+DECLARRAY(knowndev);
+DEFARRAY(knowndev, /*no inline*/);
 
 static struct knowndevarray *knowndevs;
 
@@ -110,7 +110,6 @@ vfs_bootstrap(void)
 	vfs_biglock_depth = 0;
 
 	devnull_create();
-	semfs_bootstrap();
 }
 
 /*
@@ -175,7 +174,7 @@ vfs_sync(void)
  * back an appropriate vnode.
  */
 int
-vfs_getroot(const char *devname, struct vnode **ret)
+vfs_getroot(const char *devname, struct vnode **result)
 {
 	struct knowndev *kd;
 	unsigned i, num;
@@ -201,7 +200,8 @@ vfs_getroot(const char *devname, struct vnode **ret)
 
 			if (!strcmp(kd->kd_name, devname) ||
 			    (volname!=NULL && !strcmp(volname, devname))) {
-				return FSOP_GETROOT(kd->kd_fs, ret);
+				*result = FSOP_GETROOT(kd->kd_fs);
+				return 0;
 			}
 		}
 		else {
@@ -221,7 +221,7 @@ vfs_getroot(const char *devname, struct vnode **ret)
 			KASSERT(kd->kd_rawname==NULL);
 			KASSERT(kd->kd_device != NULL);
 			VOP_INCREF(kd->kd_vnode);
-			*ret = kd->kd_vnode;
+			*result = kd->kd_vnode;
 			return 0;
 		}
 
@@ -232,14 +232,14 @@ vfs_getroot(const char *devname, struct vnode **ret)
 		if (kd->kd_rawname!=NULL && !strcmp(kd->kd_rawname, devname)) {
 			KASSERT(kd->kd_device != NULL);
 			VOP_INCREF(kd->kd_vnode);
-			*ret = kd->kd_vnode;
+			*result = kd->kd_vnode;
 			return 0;
 		}
 
 		/*
 		 * If none of the above tests matched, we didn't name
 		 * any of the names of this device, so go on to the
-		 * next one.
+		 * next one. 
 		 */
 	}
 
@@ -382,27 +382,23 @@ vfs_doadd(const char *dname, int mountable, struct device *dev, struct fs *fs)
 
 	name = kstrdup(dname);
 	if (name==NULL) {
-		result = ENOMEM;
-		goto fail;
+		goto nomem;
 	}
 	if (mountable) {
 		rawname = mkrawname(name);
 		if (rawname==NULL) {
-			result = ENOMEM;
-			goto fail;
+			goto nomem;
 		}
 	}
 
 	vnode = dev_create_vnode(dev);
 	if (vnode==NULL) {
-		result = ENOMEM;
-		goto fail;
+		goto nomem;
 	}
 
 	kd = kmalloc(sizeof(struct knowndev));
 	if (kd==NULL) {
-		result = ENOMEM;
-		goto fail;
+		goto nomem;
 	}
 
 	kd->kd_name = name;
@@ -416,24 +412,22 @@ vfs_doadd(const char *dname, int mountable, struct device *dev, struct fs *fs)
 	}
 
 	if (badnames(name, rawname, volname)) {
-		result = EEXIST;
-		goto fail;
+		vfs_biglock_release();
+		return EEXIST;
 	}
 
 	result = knowndevarray_add(knowndevs, kd, &index);
-	if (result) {
-		goto fail;
-	}
 
-	if (dev != NULL) {
+	if (result == 0 && dev != NULL) {
 		/* use index+1 as the device number, so 0 is reserved */
 		dev->d_devnumber = index+1;
 	}
 
 	vfs_biglock_release();
-	return 0;
+	return result;
 
- fail:
+ nomem:
+
 	if (name) {
 		kfree(name);
 	}
@@ -441,14 +435,14 @@ vfs_doadd(const char *dname, int mountable, struct device *dev, struct fs *fs)
 		kfree(rawname);
 	}
 	if (vnode) {
-		dev_uncreate_vnode(vnode);
+		kfree(vnode);
 	}
 	if (kd) {
 		kfree(kd);
 	}
-
+	
 	vfs_biglock_release();
-	return result;
+	return ENOMEM;
 }
 
 /*
@@ -577,7 +571,6 @@ vfs_unmount(const char *devname)
 	KASSERT(kd->kd_rawname != NULL);
 	KASSERT(kd->kd_device != NULL);
 
-	/* sync the fs */
 	result = FSOP_SYNC(kd->kd_fs);
 	if (result) {
 		goto fail;
@@ -636,17 +629,13 @@ vfs_unmountall(void)
 				kprintf("vfs: Warning: sync failed second time"
 					" for %s: %s, giving up...\n",
 					dev->kd_name, strerror(result));
-				/*
-				 * Do not attempt to complete the
-				 * unmount as it will likely explode.
-				 */
 				continue;
 			}
 		}
 
 		result = FSOP_UNMOUNT(dev->kd_fs);
 		if (result == EBUSY) {
-			kprintf("vfs: Cannot unmount %s: (busy)\n",
+			kprintf("vfs: Cannot unmount %s: (busy)\n", 
 				dev->kd_name);
 			continue;
 		}

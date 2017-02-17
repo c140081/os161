@@ -35,13 +35,37 @@
 
 /* Lowest revision we support */
 #define LOW_VERSION   1
+/* Highest revision we support */
+#define HIGH_VERSION  1
 
+/*
+ * wrappers to satisfy the type system
+ */
+static
+void
+do_lamebus_mask_interrupt(void *bus, uint32_t buspos)
+{
+	struct lamebus_softc *lb = bus;
+	lamebus_mask_interrupt(lb, buspos);
+}
+
+static
+void
+do_lamebus_unmask_interrupt(void *bus, uint32_t buspos)
+{
+	struct lamebus_softc *lb = bus;
+	lamebus_unmask_interrupt(lb, buspos);
+}
+
+/*
+ * attachment function
+ */
 struct lser_softc *
 attach_lser_to_lamebus(int lserno, struct lamebus_softc *sc)
 {
 	struct lser_softc *ls;
 	int slot = lamebus_probe(sc, LB_VENDOR_CS161, LBCS161_SERIAL,
-				 LOW_VERSION, NULL);
+				 LOW_VERSION, HIGH_VERSION);
 	if (slot < 0) {
 		return NULL;
 	}
@@ -55,6 +79,8 @@ attach_lser_to_lamebus(int lserno, struct lamebus_softc *sc)
 
 	ls->ls_busdata = sc;
 	ls->ls_buspos = slot;
+	ls->ls_maskinterrupt = do_lamebus_mask_interrupt;
+	ls->ls_unmaskinterrupt = do_lamebus_unmask_interrupt;
 
 	lamebus_mark(sc, slot);
 	lamebus_attach_interrupt(sc, slot, ls, lser_irq);

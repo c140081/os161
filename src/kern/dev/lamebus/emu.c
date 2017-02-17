@@ -47,7 +47,6 @@
 #include <lib.h>
 #include <array.h>
 #include <uio.h>
-#include <membar.h>
 #include <synch.h>
 #include <lamebus/emu.h>
 #include <platform/bus.h>
@@ -142,9 +141,9 @@ translate_err(struct emu_softc *sc, uint32_t code)
 {
 	switch (code) {
 	    case EMU_RES_SUCCESS: return 0;
-	    case EMU_RES_BADHANDLE:
-	    case EMU_RES_BADOP:
-	    case EMU_RES_BADSIZE:
+	    case EMU_RES_BADHANDLE: 
+	    case EMU_RES_BADOP: 
+	    case EMU_RES_BADSIZE: 
 		panic("emu%d: got fatal result code %d\n", sc->e_unit, code);
 	    case EMU_RES_BADPATH: return ENOENT;
 	    case EMU_RES_EXISTS: return EEXIST;
@@ -154,7 +153,7 @@ translate_err(struct emu_softc *sc, uint32_t code)
 	    case EMU_RES_NOSPACE: return ENOSPC;
 	    case EMU_RES_NOTDIR: return ENOTDIR;
 	    case EMU_RES_UNKNOWN: return EIO;
-	    case EMU_RES_UNSUPP: return ENOSYS;
+	    case EMU_RES_UNSUPP: return EUNIMP;
 	}
 	kprintf("emu%d: Unknown result code %d\n", sc->e_unit, code);
 	return EAGAIN;
@@ -173,8 +172,8 @@ emu_waitdone(struct emu_softc *sc)
 
 /*
  * Common file open routine (for both VOP_LOOKUP and VOP_CREATE).  Not
- * for VOP_EACHOPEN. At the hardware level, we need to "open" files in
- * order to look at them, so by the time VOP_EACHOPEN is called the
+ * for VOP_OPEN. At the hardware level, we need to "open" files in
+ * order to look at them, so by the time VOP_OPEN is called the
  * files are already open.
  */
 static
@@ -206,7 +205,6 @@ emu_open(struct emu_softc *sc, uint32_t handle, const char *name,
 	lock_acquire(sc->e_lock);
 
 	strcpy(sc->e_iobuf, name);
-	membar_store_store();
 	emu_wreg(sc, REG_IOLEN, strlen(name));
 	emu_wreg(sc, REG_HANDLE, handle);
 	emu_wreg(sc, REG_OPER, op);
@@ -223,7 +221,7 @@ emu_open(struct emu_softc *sc, uint32_t handle, const char *name,
 
 /*
  * Routine for closing a file we opened at the hardware level.
- * This is not necessarily called at VOP_LASTCLOSE time; it's called
+ * This is not necessarily called at VOP_CLOSE time; it's called
  * at VOP_RECLAIM time.
  */
 static
@@ -247,7 +245,7 @@ emu_close(struct emu_softc *sc, uint32_t handle)
 		result = emu_waitdone(sc);
 
 		if (result==EIO && retries < 10) {
-			kprintf("emu%d: I/O error on close, retrying\n",
+			kprintf("emu%d: I/O error on close, retrying\n", 
 				sc->e_unit);
 			retries++;
 			continue;
@@ -273,11 +271,6 @@ emu_doread(struct emu_softc *sc, uint32_t handle, uint32_t len,
 
 	KASSERT(uio->uio_rw == UIO_READ);
 
-	if (uio->uio_offset > (off_t)0xffffffff) {
-		/* beyond the largest size the file can have; generate EOF */
-		return 0;
-	}
-
 	lock_acquire(sc->e_lock);
 
 	emu_wreg(sc, REG_HANDLE, handle);
@@ -288,8 +281,7 @@ emu_doread(struct emu_softc *sc, uint32_t handle, uint32_t len,
 	if (result) {
 		goto out;
 	}
-
-	membar_load_load();
+	
 	result = uiomove(sc->e_iobuf, emu_rreg(sc, REG_IOLEN), uio);
 
 	uio->uio_offset = emu_rreg(sc, REG_OFFSET);
@@ -333,10 +325,6 @@ emu_write(struct emu_softc *sc, uint32_t handle, uint32_t len,
 
 	KASSERT(uio->uio_rw == UIO_WRITE);
 
-	if (uio->uio_offset > (off_t)0xffffffff) {
-		return EFBIG;
-	}
-
 	lock_acquire(sc->e_lock);
 
 	emu_wreg(sc, REG_HANDLE, handle);
@@ -344,7 +332,6 @@ emu_write(struct emu_softc *sc, uint32_t handle, uint32_t len,
 	emu_wreg(sc, REG_OFFSET, uio->uio_offset);
 
 	result = uiomove(sc->e_iobuf, len, uio);
-	membar_store_store();
 	if (result) {
 		goto out;
 	}
@@ -388,8 +375,6 @@ emu_trunc(struct emu_softc *sc, uint32_t handle, off_t len)
 {
 	int result;
 
-	KASSERT(len >= 0);
-
 	lock_acquire(sc->e_lock);
 
 	emu_wreg(sc, REG_HANDLE, handle);
@@ -406,7 +391,7 @@ emu_trunc(struct emu_softc *sc, uint32_t handle, off_t len)
 
 ////////////////////////////////////////////////////////////
 //
-// vnode functions
+// vnode functions 
 //
 
 // at bottom of this section
@@ -415,32 +400,35 @@ static int emufs_loadvnode(struct emufs_fs *ef, uint32_t handle, int isdir,
 			   struct emufs_vnode **ret);
 
 /*
- * VOP_EACHOPEN on files
+ * VOP_OPEN on files
  */
 static
 int
-emufs_eachopen(struct vnode *v, int openflags)
+emufs_open(struct vnode *v, int openflags)
 {
 	/*
-	 * At this level we do not need to handle O_CREAT, O_EXCL,
-	 * O_TRUNC, or O_APPEND.
+	 * At this level we do not need to handle O_CREAT, O_EXCL, or O_TRUNC.
+	 * We *would* need to handle O_APPEND, but we don't support it.
 	 *
 	 * Any of O_RDONLY, O_WRONLY, and O_RDWR are valid, so we don't need
 	 * to check that either.
 	 */
 
+	if (openflags & O_APPEND) {
+		return EUNIMP;
+	}
+
 	(void)v;
-	(void)openflags;
 
 	return 0;
 }
 
 /*
- * VOP_EACHOPEN on directories
+ * VOP_OPEN on directories
  */
 static
 int
-emufs_eachopendir(struct vnode *v, int openflags)
+emufs_opendir(struct vnode *v, int openflags)
 {
 	switch (openflags & O_ACCMODE) {
 	    case O_RDONLY:
@@ -454,6 +442,17 @@ emufs_eachopendir(struct vnode *v, int openflags)
 		return EISDIR;
 	}
 
+	(void)v;
+	return 0;
+}
+
+/*
+ * VOP_CLOSE
+ */
+static
+int
+emufs_close(struct vnode *v)
+{
 	(void)v;
 	return 0;
 }
@@ -473,31 +472,18 @@ emufs_reclaim(struct vnode *v)
 	int result;
 
 	/*
-	 * Need all of these locks, e_lock to protect the device,
-	 * vfs_biglock to protect the fs-related material, and
-	 * vn_countlock for the reference count.
+	 * Need both of these locks, e_lock to protect the device
+	 * and vfs_biglock to protect the fs-related material.
 	 */
 
 	vfs_biglock_acquire();
 	lock_acquire(ef->ef_emu->e_lock);
-	spinlock_acquire(&ev->ev_v.vn_countlock);
 
-	if (ev->ev_v.vn_refcount > 1) {
-		/* consume the reference VOP_DECREF passed us */
-		ev->ev_v.vn_refcount--;
-
-		spinlock_release(&ev->ev_v.vn_countlock);
+	if (ev->ev_v.vn_refcount != 1) {
 		lock_release(ef->ef_emu->e_lock);
 		vfs_biglock_release();
 		return EBUSY;
 	}
-	KASSERT(ev->ev_v.vn_refcount == 1);
-
-	/*
-	 * Since we hold e_lock and are the last ref, nobody can increment
-	 * the refcount, so we can release vn_countlock.
-	 */
-	spinlock_release(&ev->ev_v.vn_countlock);
 
 	/* emu_close retries on I/O error */
 	result = emu_close(ev->ev_emu, ev->ev_handle);
@@ -524,7 +510,7 @@ emufs_reclaim(struct vnode *v)
 	}
 
 	vnodearray_remove(ef->ef_vnodes, ix);
-	vnode_cleanup(&ev->ev_v);
+	VOP_CLEANUP(&ev->ev_v);
 
 	lock_release(ef->ef_emu->e_lock);
 	vfs_biglock_release();
@@ -559,7 +545,7 @@ emufs_read(struct vnode *v, struct uio *uio)
 		if (result) {
 			return result;
 		}
-
+		
 		if (uio->uio_resid == oldresid) {
 			/* nothing read - EOF */
 			break;
@@ -696,14 +682,20 @@ emufs_dir_gettype(struct vnode *v, uint32_t *result)
 }
 
 /*
- * VOP_ISSEEKABLE
+ * VOP_TRYSEEK
  */
 static
-bool
-emufs_isseekable(struct vnode *v)
+int
+emufs_tryseek(struct vnode *v, off_t pos)
 {
+	if (pos<0) {
+		return EINVAL;
+	}
+
+	/* Allow anything else */
 	(void)v;
-	return true;
+
+	return 0;
 }
 
 /*
@@ -839,8 +831,8 @@ emufs_namefile(struct vnode *v, struct uio *uio)
 	}
 
 	(void)uio;
-
-	return ENOSYS;
+	
+	return EUNIMP;
 }
 
 /*
@@ -851,7 +843,7 @@ int
 emufs_mmap(struct vnode *v)
 {
 	(void)v;
-	return ENOSYS;
+	return EUNIMP;
 }
 
 //////////////////////////////
@@ -862,12 +854,21 @@ emufs_mmap(struct vnode *v)
 
 static
 int
+emufs_dir_tryseek(struct vnode *v, off_t pos)
+{
+	(void)v;
+	(void)pos;
+	return EUNIMP;
+}
+
+static
+int
 emufs_symlink(struct vnode *v, const char *contents, const char *name)
 {
 	(void)v;
 	(void)contents;
 	(void)name;
-	return ENOSYS;
+	return EUNIMP;
 }
 
 static
@@ -877,7 +878,7 @@ emufs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	(void)v;
 	(void)name;
 	(void)mode;
-	return ENOSYS;
+	return EUNIMP;
 }
 
 static
@@ -887,7 +888,7 @@ emufs_link(struct vnode *v, const char *name, struct vnode *target)
 	(void)v;
 	(void)name;
 	(void)target;
-	return ENOSYS;
+	return EUNIMP;
 }
 
 static
@@ -896,7 +897,7 @@ emufs_remove(struct vnode *v, const char *name)
 {
 	(void)v;
 	(void)name;
-	return ENOSYS;
+	return EUNIMP;
 }
 
 static
@@ -905,7 +906,7 @@ emufs_rmdir(struct vnode *v, const char *name)
 {
 	(void)v;
 	(void)name;
-	return ENOSYS;
+	return EUNIMP;
 }
 
 static
@@ -917,7 +918,7 @@ emufs_rename(struct vnode *v1, const char *n1,
 	(void)n1;
 	(void)v2;
 	(void)n2;
-	return ENOSYS;
+	return EUNIMP;
 }
 
 //////////////////////////////
@@ -1073,68 +1074,70 @@ emufs_truncate_isdir(struct vnode *v, off_t len)
  * Function table for emufs files.
  */
 static const struct vnode_ops emufs_fileops = {
-	.vop_magic = VOP_MAGIC,	/* mark this a valid vnode ops table */
+	VOP_MAGIC,	/* mark this a valid vnode ops table */
 
-	.vop_eachopen = emufs_eachopen,
-	.vop_reclaim = emufs_reclaim,
+	emufs_open,
+	emufs_close,
+	emufs_reclaim,
 
-	.vop_read = emufs_read,
-	.vop_readlink = emufs_readlink_notlink,
-	.vop_getdirentry = emufs_uio_op_notdir,
-	.vop_write = emufs_write,
-	.vop_ioctl = emufs_ioctl,
-	.vop_stat = emufs_stat,
-	.vop_gettype = emufs_file_gettype,
-	.vop_isseekable = emufs_isseekable,
-	.vop_fsync = emufs_fsync,
-	.vop_mmap = emufs_mmap,
-	.vop_truncate = emufs_truncate,
-	.vop_namefile = emufs_uio_op_notdir,
+	emufs_read,
+	emufs_readlink_notlink,
+	emufs_uio_op_notdir, /* getdirentry */
+	emufs_write,
+	emufs_ioctl,
+	emufs_stat,
+	emufs_file_gettype,
+	emufs_tryseek,
+	emufs_fsync,
+	emufs_mmap,
+	emufs_truncate,
+	emufs_uio_op_notdir, /* namefile */
 
-	.vop_creat = emufs_creat_notdir,
-	.vop_symlink = emufs_symlink_notdir,
-	.vop_mkdir = emufs_mkdir_notdir,
-	.vop_link = emufs_link_notdir,
-	.vop_remove = emufs_name_op_notdir,
-	.vop_rmdir = emufs_name_op_notdir,
-	.vop_rename = emufs_rename_notdir,
+	emufs_creat_notdir,
+	emufs_symlink_notdir,
+	emufs_mkdir_notdir,
+	emufs_link_notdir,
+	emufs_name_op_notdir, /* remove */
+	emufs_name_op_notdir, /* rmdir */
+	emufs_rename_notdir,
 
-	.vop_lookup = emufs_lookup_notdir,
-	.vop_lookparent = emufs_lookparent_notdir,
+	emufs_lookup_notdir,
+	emufs_lookparent_notdir,
 };
 
 /*
  * Function table for emufs directories.
  */
 static const struct vnode_ops emufs_dirops = {
-	.vop_magic = VOP_MAGIC,	/* mark this a valid vnode ops table */
+	VOP_MAGIC,	/* mark this a valid vnode ops table */
 
-	.vop_eachopen = emufs_eachopendir,
-	.vop_reclaim = emufs_reclaim,
+	emufs_opendir,
+	emufs_close,
+	emufs_reclaim,
 
-	.vop_read = emufs_uio_op_isdir,
-	.vop_readlink = emufs_uio_op_isdir,
-	.vop_getdirentry = emufs_getdirentry,
-	.vop_write = emufs_uio_op_isdir,
-	.vop_ioctl = emufs_ioctl,
-	.vop_stat = emufs_stat,
-	.vop_gettype = emufs_dir_gettype,
-	.vop_isseekable = emufs_isseekable,
-	.vop_fsync = emufs_void_op_isdir,
-	.vop_mmap = emufs_void_op_isdir,
-	.vop_truncate = emufs_truncate_isdir,
-	.vop_namefile = emufs_namefile,
+	emufs_uio_op_isdir,   /* read */
+	emufs_uio_op_isdir,   /* readlink */
+	emufs_getdirentry,
+	emufs_uio_op_isdir,   /* write */
+	emufs_ioctl,
+	emufs_stat,
+	emufs_dir_gettype,
+	emufs_dir_tryseek,
+	emufs_void_op_isdir,  /* fsync */
+	emufs_void_op_isdir,  /* mmap */
+	emufs_truncate_isdir,
+	emufs_namefile,
 
-	.vop_creat = emufs_creat,
-	.vop_symlink = emufs_symlink,
-	.vop_mkdir = emufs_mkdir,
-	.vop_link = emufs_link,
-	.vop_remove = emufs_remove,
-	.vop_rmdir = emufs_rmdir,
-	.vop_rename = emufs_rename,
+	emufs_creat,
+	emufs_symlink,
+	emufs_mkdir,
+	emufs_link,
+	emufs_remove,
+	emufs_rmdir,
+	emufs_rename,
 
-	.vop_lookup = emufs_lookup,
-	.vop_lookparent = emufs_lookparent,
+	emufs_lookup,
+	emufs_lookparent,
 };
 
 /*
@@ -1180,8 +1183,8 @@ emufs_loadvnode(struct emufs_fs *ef, uint32_t handle, int isdir,
 	ev->ev_emu = ef->ef_emu;
 	ev->ev_handle = handle;
 
-	result = vnode_init(&ev->ev_v, isdir ? &emufs_dirops : &emufs_fileops,
-			    &ef->ef_fs, ev);
+	result = VOP_INIT(&ev->ev_v, isdir ? &emufs_dirops : &emufs_fileops,
+			   &ef->ef_fs, ev);
 	if (result) {
 		lock_release(ef->ef_emu->e_lock);
 		vfs_biglock_release();
@@ -1191,8 +1194,8 @@ emufs_loadvnode(struct emufs_fs *ef, uint32_t handle, int isdir,
 
 	result = vnodearray_add(ef->ef_vnodes, &ev->ev_v, NULL);
 	if (result) {
-		/* note: vnode_cleanup undoes vnode_init - it does not kfree */
-		vnode_cleanup(&ev->ev_v);
+		/* note: VOP_CLEANUP undoes VOP_INIT - it does not kfree */
+		VOP_CLEANUP(&ev->ev_v);
 		lock_release(ef->ef_emu->e_lock);
 		vfs_biglock_release();
 		kfree(ev);
@@ -1211,7 +1214,7 @@ emufs_loadvnode(struct emufs_fs *ef, uint32_t handle, int isdir,
 
 ////////////////////////////////////////////////////////////
 //
-// Whole-filesystem functions
+// Whole-filesystem functions 
 //
 
 /*
@@ -1241,8 +1244,8 @@ emufs_getvolname(struct fs *fs)
  * FSOP_GETROOT
  */
 static
-int
-emufs_getroot(struct fs *fs, struct vnode **ret)
+struct vnode *
+emufs_getroot(struct fs *fs)
 {
 	struct emufs_fs *ef;
 
@@ -1254,8 +1257,7 @@ emufs_getroot(struct fs *fs, struct vnode **ret)
 	KASSERT(ef->ef_root != NULL);
 
 	VOP_INCREF(&ef->ef_root->ev_v);
-	*ret = &ef->ef_root->ev_v;
-	return 0;
+	return &ef->ef_root->ev_v;
 }
 
 /*
@@ -1269,16 +1271,6 @@ emufs_unmount(struct fs *fs)
 	(void)fs;
 	return EBUSY;
 }
-
-/*
- * Function table for the emufs file system.
- */
-static const struct fs_ops emufs_fsops = {
-	.fsop_sync = emufs_sync,
-	.fsop_getvolname = emufs_getvolname,
-	.fsop_getroot = emufs_getroot,
-	.fsop_unmount = emufs_unmount,
-};
 
 /*
  * Routine for "mounting" an emufs - we're not really mounted in the
@@ -1299,8 +1291,11 @@ emufs_addtovfs(struct emu_softc *sc, const char *devname)
 		return ENOMEM;
 	}
 
+	ef->ef_fs.fs_sync = emufs_sync;
+	ef->ef_fs.fs_getvolname = emufs_getvolname;
+	ef->ef_fs.fs_getroot = emufs_getroot;
+	ef->ef_fs.fs_unmount = emufs_unmount;
 	ef->ef_fs.fs_data = ef;
-	ef->ef_fs.fs_ops = &emufs_fsops;
 
 	ef->ef_emu = sc;
 	ef->ef_root = NULL;

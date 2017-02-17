@@ -35,7 +35,6 @@
  */
 
 
-struct spinlock; /* in spinlock.h */
 struct wchan; /* Opaque */
 
 /*
@@ -54,27 +53,33 @@ void wchan_destroy(struct wchan *wc);
  * Return nonzero if there are no threads sleeping on the channel.
  * This is meant to be used only for diagnostic purposes.
  */
-bool wchan_isempty(struct wchan *wc, struct spinlock *lk);
+bool wchan_isempty(struct wchan *wc);
+
+/*
+ * Lock and unlock the wait channel.
+ */
+void wchan_lock(struct wchan *wc);
+void wchan_unlock(struct wchan *wc);
 
 /*
  * Go to sleep on a wait channel. The current thread is suspended
  * until awakened by someone else, at which point this function
  * returns.
  *
- * The associated lock must be locked. It will be unlocked while
- * sleeping, and relocked upon return.
+ * The channel must be locked, and will have been *unlocked* upon
+ * return.
  */
-void wchan_sleep(struct wchan *wc, struct spinlock *lk);
+void wchan_sleep(struct wchan *wc);
 
 /*
  * Wake up one thread, or all threads, sleeping on a wait channel.
- * The associated spinlock should be locked.
+ * The queue should not already be locked.
  *
  * The current implementation is FIFO but this is not promised by the
  * interface.
  */
-void wchan_wakeone(struct wchan *wc, struct spinlock *lk);
-void wchan_wakeall(struct wchan *wc, struct spinlock *lk);
+void wchan_wakeone(struct wchan *wc);
+void wchan_wakeall(struct wchan *wc);
 
 
 #endif /* _WCHAN_H_ */

@@ -46,30 +46,30 @@ void
 ram_bootstrap(void)
 {
 	size_t ramsize;
-
+	
 	/* Get size of RAM. */
 	ramsize = mainbus_ramsize();
 
 	/*
 	 * This is the same as the last physical address, as long as
-	 * we have less than 512 megabytes of memory. If we had more,
-	 * we wouldn't be able to access it all through kseg0 and
-	 * everything would get a lot more complicated. This is not a
-	 * case we are going to worry about.
+	 * we have less than 508 megabytes of memory. If we had more,
+	 * various annoying properties of the MIPS architecture would
+	 * force the RAM to be discontiguous. This is not a case we 
+	 * are going to worry about.
 	 */
-	if (ramsize > 512*1024*1024) {
-		ramsize = 512*1024*1024;
+	if (ramsize > 508*1024*1024) {
+		ramsize = 508*1024*1024;
 	}
 
 	lastpaddr = ramsize;
 
-	/*
+	/* 
 	 * Get first free virtual address from where start.S saved it.
 	 * Convert to physical address.
 	 */
 	firstpaddr = firstfree - MIPS_KSEG0;
 
-	kprintf("%uk physical memory available\n",
+	kprintf("%uk physical memory available\n", 
 		(lastpaddr-firstpaddr)/1024);
 }
 
@@ -88,7 +88,7 @@ ram_bootstrap(void)
  * it's not a legal *allocatable* physical address, because it's the
  * page with the exception handlers on it.
  *
- * This function should not be called once the VM system is initialized,
+ * This function should not be called once the VM system is initialized, 
  * so it is not synchronized.
  */
 paddr_t
@@ -112,42 +112,15 @@ ram_stealmem(unsigned long npages)
 /*
  * This function is intended to be called by the VM system when it
  * initializes in order to find out what memory it has available to
- * manage. Physical memory begins at physical address 0 and ends with
- * the address returned by this function. We assume that physical
- * memory is contiguous. This is not universally true, but is true on
- * the MIPS platforms we intend to run on.
- *
- * lastpaddr is constant once set by ram_bootstrap(), so this function
- * need not be synchronized.
- *
- * It is recommended, however, that this function be used only to
- * initialize the VM system, after which the VM system should take
- * charge of knowing what memory exists.
- */
-paddr_t
-ram_getsize(void)
-{
-	return lastpaddr;
-}
-
-/*
- * This function is intended to be called by the VM system when it
- * initializes in order to find out what memory it has available to
  * manage.
  *
- * It can only be called once, and once called ram_stealmem() will
- * no longer work, as that would invalidate the result it returned
- * and lead to multiple things using the same memory.
- *
- * This function should not be called once the VM system is initialized,
+ * This function should not be called once the VM system is initialized, 
  * so it is not synchronized.
  */
-paddr_t
-ram_getfirstfree(void)
+void
+ram_getsize(paddr_t *lo, paddr_t *hi)
 {
-	paddr_t ret;
-
-	ret = firstpaddr;
+	*lo = firstpaddr;
+	*hi = lastpaddr;
 	firstpaddr = lastpaddr = 0;
-	return ret;
 }

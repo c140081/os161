@@ -19,7 +19,7 @@
 #
 # HOSTBINDIR			Directory under $(OSTREE) to install into,
 #                               e.g. /hostbin. Should have a leading slash.
-#				If not set, the program goes in
+#				If not set, the program goes in 
 #				$(TOOLDIR)/hostbin instead.
 #
 # Note that individual program makefiles should only *append* to
@@ -50,8 +50,7 @@ MKDIRS+=$(OSTREE)$(HOSTBINDIR)
 
 # Default rule: create the program.
 # (In make the first rule found is the default.)
-all: all-local
-all-local: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_PROG_)
+all: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_PROG_)
 
 # Now get rules to compile the SRCS.
 .include "$(TOP)/mk/os161.hostcompile.mk"
@@ -59,7 +58,7 @@ all-local: $(MYBUILDDIR) .WAIT $(MYBUILDDIR)/$(_PROG_)
 # Further rules for programs.
 
 # Clean: delete extraneous files.
-clean-local: cleanhostprog
+clean: cleanhostprog
 cleanhostprog:
 	rm -f $(MYBUILDDIR)/$(_PROG_)
 
@@ -73,20 +72,20 @@ cleanhostprog:
 # Note that we make a hard link instead of a copy by default to reduce
 # overhead.
 #
-install-staging-local: $(_INSTALLDIR_) .WAIT $(_INSTALLDIR_)/$(_PROG_)
+install-staging: $(_INSTALLDIR_) .WAIT $(_INSTALLDIR_)/$(_PROG_)
 $(_INSTALLDIR_)/$(_PROG_): $(MYBUILDDIR)/$(_PROG_)
 	rm -f $(.TARGET)
-	ln $(MYBUILDDIR)/$(_PROG_) $(.TARGET) >/dev/null 2>&1 || \
+	ln $(MYBUILDDIR)/$(_PROG_) $(.TARGET) || \
 	  cp $(MYBUILDDIR)/$(_PROG_) $(.TARGET)
 
 .if defined(HOSTBINDIR)
-install-local: install-hostprog
+install: install-hostprog
 install-hostprog: $(OSTREE)$(HOSTBINDIR) $(MYBUILDDIR)/$(_PROG_)
 	rm -f $(OSTREE)$(HOSTBINDIR)/$(_PROG_)
-	ln $(MYBUILDDIR)/$(_PROG_) $(OSTREE)$(HOSTBINDIR)/$(_PROG_) >/dev/null 2>&1 || \
+	ln $(MYBUILDDIR)/$(_PROG_) $(OSTREE)$(HOSTBINDIR)/$(_PROG_) || \
 	  cp $(MYBUILDDIR)/$(_PROG_) $(OSTREE)$(HOSTBINDIR)/$(_PROG_)
 .else
-install-local:
+install:
 	@echo "Nothing to manually install"
 .endif
 
@@ -100,8 +99,7 @@ $(MYBUILDDIR)/$(_PROG_): $(HOST_OBJS) $(_COMPATLIB_)
 
 # Mark targets that don't represent files PHONY, to prevent various
 # lossage if files by those names appear.
-.PHONY: all all-local clean-local cleanhostprog install-staging-local
-.PHONY:  install-local install-hostprog
+.PHONY: all clean cleanhostprog install-staging install install-hostprog
 
 # Finally, get the shared definitions for the most basic rules.
 .include "$(TOP)/mk/os161.baserules.mk"

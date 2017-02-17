@@ -32,15 +32,32 @@
 
 
 /*
- * Macro for current thread, or current cpu.
+ * Macro for current thread, or alternatively current cpu.
  *
  * This file should only be included via <current.h> (q.v.)
  *
- * On mips we track the current thread. There's an architectural
- * issue that informs this choice: there's no easy way to find the
- * current cpu, the current thread, or even the kernel stack of the
- * current thread when entering the kernel at trap time. (On most CPUs
- * there's a canonical way to find at least the stack.)
+ * These are machine-dependent because on some platforms it is
+ * better/easier to keep track of curcpu and make curthread be
+ * curcpu->c_curthread, and on others to keep track of curthread and
+ * make curcpu be curthread->t_cpu.
+ *
+ * Either way we don't want retrieving curthread or curcpu to be
+ * expensive; digging around in system board registers and whatnot is
+ * not a very good idea. So we want to keep either curthread or curcpu
+ * on-chip somewhere in some fashion.
+ *
+ * There are various possible approaches; for example, one might use
+ * the MMU on each CPU to map that CPU's cpu structure to a fixed
+ * virtual address that's the same on all CPUs. Then curcpu can be a
+ * constant. (But one has to remember to use curcpu->c_self as the
+ * canonical form of the pointer anywhere that's visible to other
+ * CPUs.) Another approach is to reserve a register to hold curthread.
+ *
+ * On mips there's an architectural issue that informs this choice:
+ * there's no easy way to find the current cpu, the current thread, or
+ * even the kernel stack of the current thread when entering the
+ * kernel at trap time. (On most CPUs there's a canonical way to find
+ * at least the stack.)
  *
  * Therefore we do the following:
  *
@@ -59,11 +76,7 @@
  * the trap entry and return code.
  */
 
-#ifdef __GNUC__
-register struct thread *curthread __asm("$23");	/* s7 register */
-#else
-#error "Don't know how to declare curthread in this compiler"
-#endif
+register struct thread *curthread asm("$23");	/* s7 register */
 #undef __NEED_CURTHREAD
 #define __NEED_CURCPU
 

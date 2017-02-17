@@ -39,9 +39,13 @@ struct uio;  /* in <uio.h> */
 
 /*
  * Filesystem-namespace-accessible device.
+ * d_io is for both reads and writes; the uio indicates the direction.
  */
 struct device {
-	const struct device_ops *d_ops;
+	int (*d_open)(struct device *, int flags_from_open);
+	int (*d_close)(struct device *);
+	int (*d_io)(struct device *, struct uio *);
+	int (*d_ioctl)(struct device *, int op, userptr_t data);
 
 	blkcnt_t d_blocks;
 	blksize_t d_blocksize;
@@ -51,31 +55,9 @@ struct device {
 	void *d_data;		/* device-specific data */
 };
 
-/*
- * Device operations.
- *      devop_eachopen - called on each open call to allow denying the open
- *      devop_io - for both reads and writes (the uio indicates the direction)
- *      devop_ioctl - miscellaneous control operations
- */
-struct device_ops {
-	int (*devop_eachopen)(struct device *, int flags_from_open);
-	int (*devop_io)(struct device *, struct uio *);
-	int (*devop_ioctl)(struct device *, int op, userptr_t data);
-};
-
-/*
- * Macros to shorten the calling sequences.
- */
-#define DEVOP_EACHOPEN(d, f)	((d)->d_ops->devop_eachopen(d, f))
-#define DEVOP_IO(d, u)		((d)->d_ops->devop_io(d, u))
-#define DEVOP_IOCTL(d, op, p)	((d)->d_ops->devop_ioctl(d, op, p))
-
-
 /* Create vnode for a vfs-level device. */
 struct vnode *dev_create_vnode(struct device *dev);
 
-/* Undo dev_create_vnode. */
-void dev_uncreate_vnode(struct vnode *vn);
 
 /* Initialization functions for builtin vfs-level devices. */
 void devnull_create(void);
